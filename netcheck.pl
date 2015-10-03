@@ -15,23 +15,17 @@ use File::Spec;
 ###############################################################################################
 
 # Para toquetear
-my $rutadb			="database.db";
-
-my $show_computer_updates = 0;
-my $show_computer_serial_number_errors = 0;
-my $show_computer_name_or_os_errors = 1;
-my $show_computer_users_found = 0;
-
-my @active_hours = (
-	10	,
-	13	,
-	17	,
-);
+my $rutadb			= "database.db";
 
 ###############################################################################################
 
 # Global variables
-my @users_to_ignore = get_users_to_ignore();
+my @users_to_ignore;
+my $show_computer_updates;
+my $show_computer_serial_number_errors;
+my $show_computer_name_or_os_errors;
+my $show_computer_users_found;
+my @active_hours = ();
 
 ###############################################################################################
 
@@ -475,13 +469,60 @@ sub scan {
 	}
 }
 
+sub read_configuration {
+	my $all = sql_selectall_arrayref("SELECT * FROM configuration");
+				
+	my $key, $value;
+	foreach my $row (@$all) {
+		($key, $value) = @$row;
+		switch ($key){
+			case "show_computer_updates" { $show_computer_updates = $value; }
+			case "show_computer_serial_number_errors" { $show_computer_serial_number_errors = $value ; }
+			case "show_computer_name_or_os_errors" { $show_computer_name_or_os_errors = $value; }
+			case "show_computer_users_found" { $show_computer_users_found = $value; }
+			case "active_hours" { @active_hours = split(',', $value); }
+		}
+	}
+
+
+}
+
+
+sub create_db {
+
+	if (! -e $rutadb){
+		my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
+		$db->{sqlite_unicode} = 1;
+		$db->do("CREATE TABLE computers (serial TEXT, name TEXT, model TEXT, os TEXT, last_ip TEXT, first_seen TEXT, last_seen TEXT)");
+		$db->do("CREATE TABLE users (username TEXT, complete_name TEXT)");
+		$db->do("CREATE TABLE computers_and_users (serial TEXT, computer_name TEXT, username TEXT, complete_name TEXT)");
+		$db->do("CREATE TABLE networks (network TEXT, location TEXT)");
+		$db->do("CREATE TABLE users_to_ignore (username TEXT)");
+
+		$db->do("CREATE TABLE configuration (key TEXT, value TEXT)");
+		my $default_config_sql = "";
+		$default_config_sql .= "INSERT INTO configuration (key, value) VALUES ";
+		$default_config_sql .= "('show_computer_updates', '1'),";
+		$default_config_sql .= "('show_computer_serial_number_errors','0'),";
+		$default_config_sql .= "('show_computer_name_or_os_errors','1'),";
+		$default_config_sql .= "('show_computer_users_found', '1'),";
+		$default_config_sql .= "('active_hours', '10,13,17')";
+
+		$db->do($default_config_sql);
+		
+		$db->disconnect;
+		
+		p("Por favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
+		exit(0);
+	}
+}
+
 sub main {
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
-
+	
 	system("mode con:cols=90 lines=4");
 	open STDERR, '>', File::Spec->devnull();
-
 
 	# Inicia desactivado
 	my @children_pids = ();
@@ -489,6 +530,8 @@ sub main {
 	p("Status: Desactivado.\n");
 
 	while(1){
+		read_configuration();
+		
 		if(!$actived){
 			my $h = get_current_hour();
 			if( grep ( /$h/, @active_hours )) {
@@ -496,6 +539,7 @@ sub main {
 				$actived	= 1;
 
 				print	"main: Activamos el escanner.\n";
+				@users_to_ignore = get_users_to_ignore();
 				@networks = get_all_networks();
 				@networks = shuffle(@networks);
 
@@ -537,33 +581,6 @@ sub main {
 			}
 		}
 		sleep 120;
-	}
-}
-
-
-sub create_db {
-
-	if (! -e $rutadb){
-		my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-		$db->{sqlite_unicode} = 1;
-		$db->do("CREATE TABLE computers (serial TEXT, name TEXT, model TEXT, os TEXT, last_ip TEXT, first_seen TEXT, last_seen TEXT)");
-		$db->do("CREATE TABLE users (username TEXT, complete_name TEXT)");
-		$db->do("CREATE TABLE computers_and_users (serial TEXT, computer_name TEXT, username TEXT, complete_name TEXT)");
-		$db->do("CREATE TABLE networks (network TEXT, location TEXT)");
-		$db->do("CREATE TABLE users_to_ignore (username TEXT)");
-
-		$db->do("CREATE TABLE configuration (key TEXT, value TEXT)");
-		my $default_config_sql = "";
-		$default_config_sql .= "INSERT INTO configuration (key, value) VALUES ";
-		$default_config_sql .= "('show_computer_updates', '1'),";
-		$default_config_sql .= "('show_computer_serial_number_errors','1'),";
-		$default_config_sql .= "('show_computer_name_or_os_errors','1'),";
-		$default_config_sql .= "('show_computer_users_found', '1'),";
-		$default_config_sql .= "('active_hours', '10,13,17')";
-
-		$db->do("INSERT INTO configuration (key, value) VALUES ('show_computer_updates', '1'), ('show_computer_serial_number_errors','1'), ('show_computer_name_or_os_errors',''), ('',''), ('','')");
-		
-		$db->disconnect;
 	}
 }
 
