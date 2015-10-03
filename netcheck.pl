@@ -12,37 +12,36 @@ use Encode qw(decode encode);
 
 use File::Spec;
 
-###############################################################################################
-
+#########################################################
 # Para toquetear
-my $rutadb			= "database.db";
+my $rutadb				= "database.db";
 
-###############################################################################################
-
-# Global variables
-my @users_to_ignore;
-my $show_computer_updates;
-my $show_computer_serial_number_errors;
-my $show_computer_name_or_os_errors;
-my $show_computer_users_found;
-my @active_hours = ();
-
-###############################################################################################
-
-sub p {
-	my ($text) = @_;
-	$text = encode('cp850', $text);
-	print "$text";
-}
+#########################################################
 
 sub get_current_hour {
-	($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
+	($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
 	return $hour;
 }
 
+sub get_timestamp {
+	($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
+	my $timestamp = $hour . ":" . $min . ":" . $sec;
+	return $timestamp;
+}
+
+# Ya que usamos UTF-8, codifica los prints para que en la consola de Windows se vea todo correctamente
+sub p {
+	my ($text)	= @_;
+	my $t		= get_timestamp();
+	$text		= encode('cp850', $text);
+
+	print "[$t] $text";
+}
+
 sub get_serial_number {
-	my ($objetivo) = @_;
-	my $numeroserie = "";
+	my ($objetivo)	= @_;
+	my $numeroserie	= "";
+
 	for (my $i = 0; $i < 2; $i ++) {
 		if(!$numeroserie) {
 			$numeroserie	= `wmic /node:$objetivo bios get serialnumber /format:list 2>NUL`;
@@ -111,20 +110,21 @@ sub get_operating_system {
 }
 
 sub get_db_user {
-	my %result=();
+	my %result		= ();
 	my $all;
 
-	my ($user_to_query) = @_;
+	my ($user_to_query)	= @_;
 	uc($user_to_query);
 
-	my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-	$db->{sqlite_unicode} = 1;
+	my $db			= DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
+	$db->{sqlite_unicode}	= 1;
 				
 	my $error = 1;
 	while($error) {
-		$all	= $db->selectall_arrayref("SELECT * FROM users WHERE username = \'$user_to_query\'");
+		$all		= $db->selectall_arrayref("SELECT * FROM users WHERE username = \'$user_to_query\'");
 		sleep 1 if $db->err;
-		$error	= $db->err;
+
+		$error		= $db->err;
 	}
 
 	my $db_user_name, $db_complete_name, $t = 0;
@@ -214,7 +214,7 @@ sub get_computer_users {
 		chomp;
 		if(-d "$_"){
 			$ruta = $_;
-			@users_temp=`dir /OD /B \"$ruta\" 2>NUL`;
+			@users_temp = `dir /OD /B \"$ruta\" 2>NUL`;
 
 			if($#users_temp + 1 > $max_users) {
 				# p("Ruta: En $computer, $ruta tiene más usuarios, seleccionando ésta.\n");
@@ -227,7 +227,7 @@ sub get_computer_users {
 	foreach(@users){
 		chomp;
 		$_ = uc;
-		$_=~s/^\s*([\w\d]+)\.?.*$/\1/;
+		$_ =~ s/^\s*([\w\d]+)\.?.*$/\1/;
 		
 	}
 
@@ -374,6 +374,7 @@ sub scan {
 		undef($pid);
 		while(! defined($pid)){
 			$pid = fork();
+			sleep 1 if(! defined($pid));
 		}
 
 		# Si el $pid es 0, es que se trata del proceso hijo
@@ -472,10 +473,11 @@ sub scan {
 sub read_configuration {
 	my $all = sql_selectall_arrayref("SELECT * FROM configuration");
 				
-	my $key, $value;
 	foreach my $row (@$all) {
-		($key, $value) = @$row;
-		switch ($key){
+
+		my ($key, $value) = @$row;
+
+		switch ($key) {
 			case "show_computer_updates" { $show_computer_updates = $value; }
 			case "show_computer_serial_number_errors" { $show_computer_serial_number_errors = $value ; }
 			case "show_computer_name_or_os_errors" { $show_computer_name_or_os_errors = $value; }
@@ -483,7 +485,6 @@ sub read_configuration {
 			case "active_hours" { @active_hours = split(',', $value); }
 		}
 	}
-
 
 }
 
@@ -512,7 +513,7 @@ sub create_db {
 		
 		$db->disconnect;
 		
-		p("Por favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
+		p("create_db: Por favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
 		exit(0);
 	}
 }
@@ -527,7 +528,7 @@ sub main {
 	# Inicia desactivado
 	my @children_pids = ();
 	my $actived = 0;
-	p("Status: Desactivado.\n");
+	p("main: Desactivado.\n");
 
 	while(1){
 		read_configuration();
@@ -546,7 +547,7 @@ sub main {
 				p("main: Escanearemos las siguientes redes: @networks\n");
 
 				foreach(@networks){
-					p("Status: Lanzando $_\n");
+					p("main: Lanzando $_\n");
 					my $pid;
 
 					while (! (defined($pid))){
@@ -584,6 +585,12 @@ sub main {
 	}
 }
 
+# Global variables
+my @users_to_ignore;
+my $show_computer_updates		= 1;
+my $show_computer_serial_number_errors	= 1;
+my $show_computer_name_or_os_errors	= 1;
+my $show_computer_users_found		= 1;
+my @active_hours			= (10, 13, 17);
 
-# Iniciamos el percal
 main();
