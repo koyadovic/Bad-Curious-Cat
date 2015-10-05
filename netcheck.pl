@@ -6,6 +6,7 @@ use DBI;
 use DBI qw(:sql_types);
 
 use Switch;
+use POSIX 'strftime';
 
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
@@ -35,6 +36,11 @@ sub get_timestamp {
 	my $timestamp	= $hour . ":" . $min . ":" . $sec;
 
 	return $timestamp;
+}
+
+sub get_current_datetime {
+	my $datetime	= strftime("%Y-%m-%d %H:%M:%S", localtime);
+	return $datetime;
 }
 
 # Ya que usamos UTF-8, codifica los prints para que en la consola de Windows se vea todo correctamente
@@ -193,6 +199,7 @@ sub get_computer_users {
 			"\\\\$computer\\c\$\\Documents and Settings\\");
 
 	my $max_users = 0;
+	my $max_ruta = "";
 	my @users_temp=();
 
 	foreach (@rutas){
@@ -203,9 +210,10 @@ sub get_computer_users {
 			@users_temp	= split('\n', $tmp);
 
 			if($#users_temp + 1 > $max_users) {
-				# p("Ruta: En $computer, $ruta tiene más usuarios, seleccionando ésta.\n");
-				$max_users = $#users_temp + 1;
-				@users = @users_temp;
+
+				$max_users	= $#users_temp + 1;
+				$max_ruta	= $ruta;
+				@users		= @users_temp;
 			}
 		}
 	}
@@ -226,12 +234,10 @@ sub get_computer_users {
 		@users = grep { $_ !~ /$ignore_users/i; } @users;
 	}
 
-	# @users = grep { $_ !~ /\s+/; } @users;
 	@users = grep { $_ ne ""; } @users;
-	# @users = grep { $_ !~ /old$/i; } @users;
 	@users = uniq @users;
 
-	p("get_computer_users: Encontrado en $ruta: @users\n") if ($show_computer_users_found);
+	p("get_computer_users: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
 	return @users;
 }
 
@@ -256,7 +262,7 @@ sub associate_user_to_computer {
 
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
-			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_found);
+			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
 		}
 	}
 
@@ -388,8 +394,7 @@ sub scan {
 				}
 
 				if ($equipo){
-					$time = localtime();
-
+					$time = get_current_datetime();
 
 					my $all = sql_selectall_arrayref("SELECT * FROM computers WHERE serial=\'$numeroserie\' " .
 									"AND name=\'$equipo\'");
@@ -494,9 +499,10 @@ sub create_db {
 		my $default_config_sql = "";
 		$default_config_sql .= "INSERT INTO configuration (key, value) VALUES ";
 		$default_config_sql .= "('show_computer_updates', '1'),";
-		$default_config_sql .= "('show_computer_serial_number_errors','0'),";
+		$default_config_sql .= "('show_computer_serial_number_errors','1'),";
 		$default_config_sql .= "('show_computer_name_or_os_errors','1'),";
 		$default_config_sql .= "('show_computer_users_found', '1'),";
+		$default_config_sql .= "('show_computer_users_new_associations', '1'),";
 		$default_config_sql .= "('active_hours', '10,13,17')";
 
 		$db->do($default_config_sql);
@@ -512,7 +518,7 @@ sub main {
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
 	
-	system("mode con:cols=90 lines=4");
+	system("mode con:cols=110 lines=4");
 	open STDERR, '>', File::Spec->devnull();
 
 	# Inicia desactivado
@@ -525,14 +531,14 @@ sub main {
 		
 		if(!$actived){
 			my $h = get_current_hour();
-			if( grep ( /$h/, @active_hours )) {
-				system("mode con:cols=90 lines=50");
-				$actived	= 1;
+			if( grep ( /^$h$/, @active_hours )) {
+				system("mode con:cols=110 lines=50");
+				$actived		= 1;
 
 				print	"main: Activamos el escanner.\n";
-				@users_to_ignore = get_users_to_ignore();
-				@networks = get_all_networks();
-				@networks = shuffle(@networks);
+				@users_to_ignore	= get_users_to_ignore();
+				@networks		= get_all_networks();
+				@networks		= shuffle(@networks);
 
 				p("main: Escanearemos las siguientes redes: @networks\n");
 
@@ -541,7 +547,7 @@ sub main {
 					my $pid;
 
 					while (! (defined($pid))){
-						$pid  = fork();
+						$pid 	= fork();
 						sleep 1 if (! (defined ($pid)));
 					}
 
@@ -564,9 +570,9 @@ sub main {
 			}
 		} else {
 			my $h = get_current_hour();
-			if ( ! (grep ( /$h/, @active_hours))) {
-				system("mode con:cols=90 lines=4");
-				$actived	= 0;
+			if ( ! (grep ( /^$h$/, @active_hours))) {
+				system("mode con:cols=110 lines=4");
+				$actived = 0;
 
 				print	"main: Desactivamos el escanner.\n";
 			}
@@ -581,6 +587,7 @@ my $show_computer_updates		= 1;
 my $show_computer_serial_number_errors	= 1;
 my $show_computer_name_or_os_errors	= 1;
 my $show_computer_users_found		= 1;
+my $show_computer_users_new_associations= 1;
 my @active_hours			= (10, 13, 17);
 
 main();
