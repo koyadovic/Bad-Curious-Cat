@@ -18,6 +18,9 @@ use File::Spec;
 #########################################################
 # Para toquetear
 my $rutadb				= "database.db";
+my $columns				= 110;
+my $lines_max				= 50;
+my $lines_min				= 4;
 
 #########################################################
 
@@ -518,7 +521,7 @@ sub main {
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
 	
-	system("mode con:cols=110 lines=4");
+	system("mode con:cols=$columns lines=$lines_min");
 	open STDERR, '>', File::Spec->devnull();
 
 	# Inicia desactivado
@@ -531,8 +534,9 @@ sub main {
 		
 		if(!$actived){
 			my $h = get_current_hour();
+
 			if( grep ( /^$h$/, @active_hours )) {
-				system("mode con:cols=110 lines=50");
+				system("mode con:cols=$columns lines=$lines_max");
 				$actived		= 1;
 
 				print	"main: Activamos el escanner.\n";
@@ -570,8 +574,9 @@ sub main {
 			}
 		} else {
 			my $h = get_current_hour();
+
 			if ( ! (grep ( /^$h$/, @active_hours))) {
-				system("mode con:cols=110 lines=4");
+				system("mode con:cols=$columns lines=$lines_min");
 				$actived = 0;
 
 				print	"main: Desactivamos el escanner.\n";
