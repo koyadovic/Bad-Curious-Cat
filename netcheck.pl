@@ -199,7 +199,7 @@ sub get_computer_users {
 		chomp;
 		if(-d "$_"){
 			$ruta		= $_;
-			mt $tmp		= `dir /OD /B \"$ruta\" 2>NUL`; # HAY QUE PROBAR ESTO!!!!!!!!!!!!!!!!!!!
+			my $tmp		= `dir /OD /B \"$ruta\" 2>NUL`;
 			@users_temp	= split('\n', $tmp);
 
 			if($#users_temp + 1 > $max_users) {
@@ -213,20 +213,22 @@ sub get_computer_users {
 	foreach(@users){
 		chomp;
 		$_ = uc;
-		$_ =~ s/^\s*([\w\d ]+)\.?.*$/\1/; # HEMOS AÑADIDO EL ESPACIO Y LAS COMILLAS!!!! HAY QUE PROBARLO!!!!!
-		
+		$_ =~ s/^\s*([\w\d ]+)\.?.*$/\1/;
 		$_ =~ s/(.*)/\"\1\"/ if ($_ =~ / /);
 		
 	}
 
-	my $ignore_users	= "(";
-	$ignore_users 		.= join('|', @users_to_ignore);
-	$ignore_users		.= ")";
+	if (($#users_to_ignore + 1) > 0) {
+		my $ignore_users	= "(";
+		$ignore_users 		.= join('|', @users_to_ignore);
+		$ignore_users		.= ")";
 
-	@users = grep { $_ !~ /$ignore_users/i; } @users;
-	@users = grep { $_ !~ /\s+/; } @users;
+		@users = grep { $_ !~ /$ignore_users/i; } @users;
+	}
+
+	# @users = grep { $_ !~ /\s+/; } @users;
 	@users = grep { $_ ne ""; } @users;
-	@users = grep { $_ !~ /old$/i; } @users;
+	# @users = grep { $_ !~ /old$/i; } @users;
 	@users = uniq @users;
 
 	p("get_computer_users: Encontrado en $ruta: @users\n") if ($show_computer_users_found);
