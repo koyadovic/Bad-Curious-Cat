@@ -24,6 +24,47 @@ my $lines_min				= 4;
 
 #########################################################
 
+sub get_database {
+	my $db = DBI->connect("dbi:SQLite:" . $rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
+	$db->{sqlite_unicode} = 1;
+	return $db;
+}
+
+sub sql_do {
+	my ($query)		= @_;
+
+	my $db			= get_database();
+
+	my $error		= 1;
+	while($error) {
+		$db->do($query);
+		sleep 1 if $db->err;
+		$error		= $db->err;
+	}
+
+	$db->disconnect;
+}
+
+sub sql_selectall_arrayref {
+	my ($query)			= @_;
+
+	my $db_read			= get_database();
+	my $all;	
+
+	my $error			= 1;
+	while($error) {
+		$all			= $db_read->selectall_arrayref($query);
+
+		sleep 1 if $db_read->err;
+		$error			= $db_read->err;
+
+	}
+
+	$db_read->disconnect;
+
+	return $all;
+}
+
 sub get_current_hour {
 	($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
 	return $hour;
@@ -128,12 +169,12 @@ sub get_operating_system {
 
 sub get_db_user {
 	my %result		= ();
-	my $all;
 
 	my ($user_to_query)	= @_;
 	uc($user_to_query);
-	
-	$all			= selectall_arrayref("SELECT * FROM users WHERE username = \'$user_to_query\'");
+
+	my $sql			= "SELECT * FROM users WHERE username = \'$user_to_query\'";
+	my $all			= sql_selectall_arrayref($sql);
 
 	my $db_user_name, $db_complete_name, $t = 0;
 
@@ -146,6 +187,7 @@ sub get_db_user {
 
 	if($t){
 		$result{$user_to_query} = $db_complete_name;
+		p("get_db_user [$$]: $user_to_query encontrado: $db_complete_name\n");
 	}
 
 	return %result;
@@ -172,7 +214,7 @@ sub get_ad_complete_name {
 
 					$line = decode('cp850', $line);
 
-					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
+					p("get_ad_complete_name [$$]:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
 					return $line;
 				}
 			}
@@ -187,7 +229,7 @@ sub get_ad_complete_name {
 sub add_db_user {
 	my ($username, $complete_name) = @_;
 	sql_do("INSERT INTO users VALUES (\'$username\', \'$complete_name\')");
-	p("add_db_user:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
+	p("add_db_user [$$]:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
 }
 
 sub get_computer_users {
@@ -225,7 +267,6 @@ sub get_computer_users {
 		chomp;
 		$_ = uc;
 		$_ =~ s/^\s*([\w\d ]+)\.?.*$/\1/;
-		$_ =~ s/(.*)/\"\1\"/ if ($_ =~ / /);
 		
 	}
 
@@ -240,7 +281,7 @@ sub get_computer_users {
 	@users = grep { $_ ne ""; } @users;
 	@users = uniq @users;
 
-	p("get_computer_users: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
+	p("get_computer_users [$$]: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
 	return @users;
 }
 
@@ -265,7 +306,7 @@ sub associate_user_to_computer {
 
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
-			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
+			p("associate_user_to_computer [$$]:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
 		}
 	}
 
@@ -312,44 +353,9 @@ sub get_alive_ips {
 
 	@resultados = shuffle(@resultados);
 
-	p("get_alive_ips:\t\tResultados de la red $network ->\t" . ($#resultados + 1) . " equipos.\n");
+	p("get_alive_ips [$$]:\t\tResultados de la red $network ->\t" . ($#resultados + 1) . " equipos.\n");
 
 	return @resultados;
-}
-
-sub sql_do {
-	my ($query) = @_;
-
-	my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-	$db->{sqlite_unicode} = 1;
-	my $error = 1;
-	while($error) {
-		$db->do($query);
-		sleep 1 if $db->err;
-		$error = $db->err;
-	}
-
-	$db->disconnect;
-}
-
-sub sql_selectall_arrayref {
-	my ($query) = @_;
-
-	my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-	$db->{sqlite_unicode} = 1;
-
-
-	my $all;	
-	my $error = 1;
-	while($error) {
-		$all = $db->selectall_arrayref($query);
-		sleep 1 if $db->err;
-		$error = $db->err;
-	}
-
-	$db->disconnect;
-
-	return $all;
 }
 
 sub scan {
@@ -414,7 +420,7 @@ sub scan {
 						sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
 							"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
 
-						p("scan: Añadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
+						p("scan [$$]: Añadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
 
 					} else {
 						# Sí que existe en la DB, hay que actualizarlo.
@@ -428,7 +434,7 @@ sub scan {
 						$query .= " WHERE serial=\'$numeroserie\'";
 
 						sql_do($query);
-						p("scan: Actualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
+						p("scan [$$]: Actualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
 
 					}
 
@@ -450,10 +456,10 @@ sub scan {
 						}
 					}
 				} else {
-					p("scan: Problemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
+					p("scan [$$]: Problemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
 				}
 			} else {
-				p("scan: Equipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
+				p("scan [$$]: Equipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
 			}
 
 			exit(0);
