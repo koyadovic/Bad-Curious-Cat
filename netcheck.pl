@@ -5,6 +5,8 @@ use utf8;
 use DBI;
 use DBI qw(:sql_types);
 
+use Switch;
+
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
@@ -25,7 +27,13 @@ sub get_current_hour {
 
 sub get_timestamp {
 	($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
-	my $timestamp = $hour . ":" . $min . ":" . $sec;
+
+	$hour		= sprintf "%02d",	$hour;
+	$min		= sprintf "%02d",	$min;
+	$sec		= sprintf "%02d",	$sec;
+
+	my $timestamp	= $hour . ":" . $min . ":" . $sec;
+
 	return $timestamp;
 }
 
@@ -115,22 +123,13 @@ sub get_db_user {
 
 	my ($user_to_query)	= @_;
 	uc($user_to_query);
-
-	my $db			= DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-	$db->{sqlite_unicode}	= 1;
-				
-	my $error = 1;
-	while($error) {
-		$all		= $db->selectall_arrayref("SELECT * FROM users WHERE username = \'$user_to_query\'");
-		sleep 1 if $db->err;
-
-		$error		= $db->err;
-	}
+	
+	$all			= selectall_arrayref("SELECT * FROM users WHERE username = \'$user_to_query\'");
 
 	my $db_user_name, $db_complete_name, $t = 0;
 
 	foreach my $row (@$all) {
-		$t = 1;
+		$t 		= 1;
 		($db_user_name, $db_complete_name) = @$row;
 	}
 
@@ -164,7 +163,7 @@ sub get_ad_complete_name {
 
 					$line = decode('cp850', $line);
 
-					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n");
+					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
 					return $line;
 				}
 			}
@@ -178,22 +177,8 @@ sub get_ad_complete_name {
 # username, complete name (the two parameters needed)
 sub add_db_user {
 	my ($username, $complete_name) = @_;
-
-	my $db = DBI->connect("dbi:SQLite:".$rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
-	$db->{sqlite_unicode} = 1;
-
-	my $error = 1;
-
-	while($error) {
-		p("add_db_user:\t\t\t$username ->\t$complete_name\n");
-		$db->do("INSERT INTO users VALUES (\'$username\', \'$complete_name\')");
-		sleep 1 if $db->err;
-
-		$error = $db->err;
-	}
-
-	$db->disconnect;
-
+	sql_do("INSERT INTO users VALUES (\'$username\', \'$complete_name\')");
+	p("add_db_user:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
 }
 
 sub get_computer_users {
@@ -213,8 +198,9 @@ sub get_computer_users {
 	foreach (@rutas){
 		chomp;
 		if(-d "$_"){
-			$ruta = $_;
-			@users_temp = `dir /OD /B \"$ruta\" 2>NUL`;
+			$ruta		= $_;
+			mt $tmp		= `dir /OD /B \"$ruta\" 2>NUL`; # HAY QUE PROBAR ESTO!!!!!!!!!!!!!!!!!!!
+			@users_temp	= split('\n', $tmp);
 
 			if($#users_temp + 1 > $max_users) {
 				# p("Ruta: En $computer, $ruta tiene más usuarios, seleccionando ésta.\n");
@@ -227,7 +213,9 @@ sub get_computer_users {
 	foreach(@users){
 		chomp;
 		$_ = uc;
-		$_ =~ s/^\s*([\w\d]+)\.?.*$/\1/;
+		$_ =~ s/^\s*([\w\d ]+)\.?.*$/\1/; # HEMOS AÑADIDO EL ESPACIO Y LAS COMILLAS!!!! HAY QUE PROBARLO!!!!!
+		
+		$_ =~ s/(.*)/\"\1\"/ if ($_ =~ / /);
 		
 	}
 
@@ -266,7 +254,7 @@ sub associate_user_to_computer {
 
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
-			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n");
+			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_found);
 		}
 	}
 
