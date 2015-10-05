@@ -307,6 +307,8 @@ sub associate_user_to_computer {
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
 			p("associate_user_to_computer [$$]:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
+		} else {
+			p("USUARIO $user YA ASOCIADO CON $computer_name\n");
 		}
 	}
 
