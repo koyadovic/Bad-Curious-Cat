@@ -71,19 +71,14 @@ sub get_current_hour {
 }
 
 sub get_timestamp {
-	($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
-
-	$hour		= sprintf "%02d",	$hour;
-	$min		= sprintf "%02d",	$min;
-	$sec		= sprintf "%02d",	$sec;
-
-	my $timestamp	= $hour . ":" . $min . ":" . $sec;
+	my $timestamp	= strftime("%H:%M", localtime);
 
 	return $timestamp;
 }
 
 sub get_current_datetime {
 	my $datetime	= strftime("%Y-%m-%d %H:%M:%S", localtime);
+
 	return $datetime;
 }
 
@@ -484,6 +479,7 @@ sub read_configuration {
 			case "show_computer_serial_number_errors" { $show_computer_serial_number_errors = $value ; }
 			case "show_computer_name_or_os_errors" { $show_computer_name_or_os_errors = $value; }
 			case "show_computer_users_found" { $show_computer_users_found = $value; }
+			case "show_computer_users_new_associations" { $show_computer_users_new_associations = $value; }
 			case "active_hours" { @active_hours = split(',', $value); }
 		}
 	}
@@ -533,9 +529,10 @@ sub main {
 	my $actived = 0;
 	p("main: Desactivado.\n");
 
+	read_configuration();
 	while(1){
-		read_configuration();
 		
+
 		if(!$actived){
 			my $h = get_current_hour();
 
@@ -551,6 +548,8 @@ sub main {
 				p("main: Escanearemos las siguientes redes: @networks\n");
 
 				foreach(@networks){
+					read_configuration();
+
 					p("main: Lanzando $_\n");
 					my $pid;
 
