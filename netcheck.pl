@@ -1,4 +1,4 @@
-#!C:\strawberry\perl\bin\perl.exe
+﻿#!C:\strawberry\perl\bin\perl.exe
 
 use utf8;
 
@@ -183,11 +183,8 @@ sub get_db_user {
 		($db_user_name, $db_complete_name) = @$row;
 	}
 
-	$db->disconnect;
-
 	if($t){
 		$result{$user_to_query} = $db_complete_name;
-		p("get_db_user [$$]: $user_to_query encontrado: $db_complete_name\n");
 	}
 
 	return %result;
@@ -294,6 +291,7 @@ sub associate_user_to_computer {
 	if($serialnumber && $computer_name && $user) {
 
 		$all = sql_selectall_arrayref("SELECT * FROM computers_and_users WHERE serial = \'$serialnumber\' AND computer_name=\'$computer_name\' AND username=\'$user\'");
+
 		my $db_serial, $db_user_name, $t = 0;
 
 		foreach my $row (@$all) {
@@ -307,8 +305,6 @@ sub associate_user_to_computer {
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
 			p("associate_user_to_computer [$$]:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
-		} else {
-			p("USUARIO $user YA ASOCIADO CON $computer_name\n");
 		}
 	}
 
@@ -530,7 +526,7 @@ sub main {
 	create_db();
 	
 	system("mode con:cols=$columns lines=$lines_min");
-	open STDERR, '>', File::Spec->devnull();
+	# open STDERR, '>', File::Spec->devnull();
 
 	# Inicia desactivado
 	my @children_pids = ();
