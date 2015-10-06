@@ -18,9 +18,9 @@ use Encode qw(decode encode);
 #########################################################
 # Para toquetear
 my $rutadb				= "database.db";
-my $columns				= 110;
-my $lines_max				= 50;
-my $lines_min				= 4;
+my $columns				= 140;
+my $lines_max				= 55;
+my $lines_min				= 3;
 
 #########################################################
 
@@ -33,24 +33,20 @@ sub get_database {
 sub sql_do {
 	my ($query)		= @_;
 
-
 	my $error		= 1;
 	while($error) {
 		my $db		= get_database();
 
 		$db->do($query);
-		sleep 1 if $db->err;
+		sleep 5 if $db->err;
 		$error		= $db->err;
 
 		$db->disconnect;
 	}
-
-
 }
 
 sub sql_selectall_arrayref {
 	my ($query)			= @_;
-
 
 	my $all;	
 
@@ -59,13 +55,11 @@ sub sql_selectall_arrayref {
 		my $db_read		= get_database();
 		$all			= $db_read->selectall_arrayref($query);
 
-		sleep 1 if $db_read->err;
+		sleep 5 if $db_read->err;
 		$error			= $db_read->err;
 
 		$db_read->disconnect;
 	}
-
-	
 
 	return $all;
 }
@@ -93,7 +87,7 @@ sub p {
 	my $t		= get_timestamp();
 	$text		= encode('cp850', $text);
 
-	print "[$t] $text";
+	print "[$t] [PID: $$\t] $text";
 }
 
 sub get_serial_number {
@@ -211,7 +205,7 @@ sub get_ad_complete_name {
 
 					$line = decode('cp850', $line);
 
-					p("get_ad_complete_name [$$]:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
+					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
 					return $line;
 				}
 			}
@@ -226,7 +220,7 @@ sub get_ad_complete_name {
 sub add_db_user {
 	my ($username, $complete_name) = @_;
 	sql_do("INSERT INTO users VALUES (\'$username\', \'$complete_name\')");
-	p("add_db_user [$$]:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
+	p("add_db_user:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
 }
 
 sub get_computer_users {
@@ -278,7 +272,7 @@ sub get_computer_users {
 	@users = grep { $_ ne ""; } @users;
 	@users = uniq @users;
 
-	p("get_computer_users [$$]: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
+	p("get_computer_users: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
 	return @users;
 }
 
@@ -304,7 +298,7 @@ sub associate_user_to_computer {
 
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
-			p("associate_user_to_computer [$$]:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
+			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
 		}
 	}
 
@@ -351,7 +345,7 @@ sub get_alive_ips {
 
 	@resultados = shuffle(@resultados);
 
-	p("get_alive_ips [$$]:\t\tResultados de la red $network ->\t" . ($#resultados + 1) . " equipos.\n");
+	p("get_alive_ips:\t\tResultados de la red $network ->\t" . ($#resultados + 1) . " equipos.\n");
 
 	return @resultados;
 }
@@ -368,7 +362,7 @@ sub scan {
 	foreach $objetivo (@resultados){
 
 		# Si los procesos hijo han superado el límite esperamos.
-		if ($hijos > 4) {
+		if ($hijos > 3) {
 			$pid=wait();
 			$hijos--;
 		}
@@ -418,7 +412,7 @@ sub scan {
 						sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
 							"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
 
-						p("scan [$$]: Añadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
+						p("scan: Añadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
 
 					} else {
 						# Sí que existe en la DB, hay que actualizarlo.
@@ -432,7 +426,7 @@ sub scan {
 						$query .= " WHERE serial=\'$numeroserie\'";
 
 						sql_do($query);
-						p("scan [$$]: Actualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
+						p("scan: Actualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
 
 					}
 
@@ -454,10 +448,10 @@ sub scan {
 						}
 					}
 				} else {
-					p("scan [$$]: Problemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
+					p("scan: Problemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
 				}
 			} else {
-				p("scan [$$]: Equipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
+				p("scan: Equipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
 			}
 
 			exit(0);
@@ -470,6 +464,8 @@ sub scan {
 		}
 		
 	}
+	p("scan: Scan para la red $network finalizado.\n");
+	exit(0);
 }
 
 sub read_configuration {
@@ -522,17 +518,24 @@ sub create_db {
 	}
 }
 
+sub enable_netcheck {
+	system("mode con:cols=$columns lines=$lines_max");
+	p("main: Activamos el escanner.\n");
+	$actived		= 1;
+}
+
+sub disable_netcheck {
+	system("mode con:cols=$columns lines=$lines_min");
+	p("main: Desactivado.\n");
+	$actived		= 0;
+}
+
 sub main {
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
 	
-	system("mode con:cols=$columns lines=$lines_min");
-	# open STDERR, '>', File::Spec->devnull();
-
 	# Inicia desactivado
-	my @children_pids = ();
-	my $actived = 0;
-	p("main: Desactivado.\n");
+	disable_netcheck();
 
 	while(1){
 		read_configuration();
@@ -541,10 +544,9 @@ sub main {
 			my $h = get_current_hour();
 
 			if( grep ( /^$h$/, @active_hours )) {
-				system("mode con:cols=$columns lines=$lines_max");
-				$actived		= 1;
 
-				p("main: Activamos el escanner.\n");
+				enable_netcheck();
+
 				@users_to_ignore	= get_users_to_ignore();
 				@networks		= get_all_networks();
 				@networks		= shuffle(@networks);
@@ -564,11 +566,10 @@ sub main {
 
 					if(!$pid) {
 						scan($_);
-						exit(0);
 
 					} else {
-						push(@children_pids, $pid);
-						sleep(60);
+						# push(@children_pids, $pid);
+						sleep(80);
 					}
 
 				}
@@ -576,18 +577,11 @@ sub main {
 				p("main: No hay más redes para escanear\n");
 
 				sleep 300;
-				# kill -9, @children_pids;
-				@children_pids = ();
 			}
 		} else {
 			my $h = get_current_hour();
 
-			if ( ! (grep ( /^$h$/, @active_hours))) {
-				system("mode con:cols=$columns lines=$lines_min");
-				$actived = 0;
-
-				p("main: Desactivamos el escanner.\n");
-			}
+			disable_netcheck() if ( ! (grep ( /^$h$/, @active_hours)));
 		}
 		sleep 120;
 	}
@@ -601,5 +595,7 @@ my $show_computer_name_or_os_errors	= 1;
 my $show_computer_users_found		= 1;
 my $show_computer_users_new_associations= 1;
 my @active_hours			= (10, 13, 17);
+
+my $actived = 0;
 
 main();
