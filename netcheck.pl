@@ -13,7 +13,7 @@ use List::MoreUtils qw(uniq);
 
 use Encode qw(decode encode);
 
-use File::Spec;
+# use File::Spec;
 
 #########################################################
 # Para toquetear
@@ -576,7 +576,7 @@ sub main {
 				p("main: No hay más redes para escanear\n");
 
 				sleep 300;
-				kill -9, @children_pids;
+				# kill -9, @children_pids;
 				@children_pids = ();
 			}
 		} else {
