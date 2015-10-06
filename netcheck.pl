@@ -33,34 +33,39 @@ sub get_database {
 sub sql_do {
 	my ($query)		= @_;
 
-	my $db			= get_database();
 
 	my $error		= 1;
 	while($error) {
+		my $db		= get_database();
+
 		$db->do($query);
 		sleep 1 if $db->err;
 		$error		= $db->err;
+
+		$db->disconnect;
 	}
 
-	$db->disconnect;
+
 }
 
 sub sql_selectall_arrayref {
 	my ($query)			= @_;
 
-	my $db_read			= get_database();
+
 	my $all;	
 
 	my $error			= 1;
 	while($error) {
+		my $db_read		= get_database();
 		$all			= $db_read->selectall_arrayref($query);
 
 		sleep 1 if $db_read->err;
 		$error			= $db_read->err;
 
+		$db_read->disconnect;
 	}
 
-	$db_read->disconnect;
+	
 
 	return $all;
 }
@@ -243,7 +248,7 @@ sub get_computer_users {
 		chomp;
 		if(-d "$_"){
 			$ruta		= $_;
-			my $tmp		= `dir /OD /B \"$ruta\" 2>NUL`;
+			my $tmp		= `dir /AD /B \"$ruta\" 2>NUL`;
 			@users_temp	= split('\n', $tmp);
 
 			if($#users_temp + 1 > $max_users) {
@@ -529,9 +534,8 @@ sub main {
 	my $actived = 0;
 	p("main: Desactivado.\n");
 
-	read_configuration();
 	while(1){
-		
+		read_configuration();
 
 		if(!$actived){
 			my $h = get_current_hour();
@@ -540,7 +544,7 @@ sub main {
 				system("mode con:cols=$columns lines=$lines_max");
 				$actived		= 1;
 
-				print	"main: Activamos el escanner.\n";
+				p("main: Activamos el escanner.\n");
 				@users_to_ignore	= get_users_to_ignore();
 				@networks		= get_all_networks();
 				@networks		= shuffle(@networks);
@@ -582,7 +586,7 @@ sub main {
 				system("mode con:cols=$columns lines=$lines_min");
 				$actived = 0;
 
-				print	"main: Desactivamos el escanner.\n";
+				p("main: Desactivamos el escanner.\n");
 			}
 		}
 		sleep 120;
