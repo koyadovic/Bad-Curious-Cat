@@ -29,8 +29,6 @@ use List::MoreUtils qw(uniq);
 
 use Encode qw(decode encode);
 
-# use File::Spec;
-
 #########################################################
 # Para toquetear
 my $rutadb				= "database.db";
@@ -101,9 +99,12 @@ sub get_current_datetime {
 sub p {
 	my ($text)	= @_;
 	my $t		= get_timestamp();
+	my $pid		= $$;
+	$pid		= sprintf '%6s', $pid;
+
 	$text		= encode('cp850', $text);
 
-	print "[$t] [PID: $$\t] $text";
+	print " [$t] [$pid] $text";
 }
 
 sub get_serial_number {
@@ -288,7 +289,7 @@ sub get_computer_users {
 	@users = grep { $_ ne ""; } @users;
 	@users = uniq @users;
 
-	p("get_computer_users: Encontrado en $max_ruta: @users\n") if ($show_computer_users_found);
+	p("get_computer_users:\t\tEncontrado en $max_ruta: @users\n") if ($show_computer_users_found);
 	return @users;
 }
 
@@ -371,6 +372,8 @@ sub scan {
 	my $network 			= shift;
 	chomp($network);
 
+	p("scan:\t\t\t\tScan para la red $network comenzado.\n");
+
 	# De la red, nos quedamos con las direcciones IP que responden a ping.
 	my @resultados 			= get_alive_ips($network);
 
@@ -428,7 +431,7 @@ sub scan {
 						sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
 							"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
 
-						p("scan: Añadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
+						p("scan:\t\t\t\tAñadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
 
 					} else {
 						# Sí que existe en la DB, hay que actualizarlo.
@@ -442,7 +445,7 @@ sub scan {
 						$query .= " WHERE serial=\'$numeroserie\'";
 
 						sql_do($query);
-						p("scan: Actualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
+						p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
 
 					}
 
@@ -464,10 +467,10 @@ sub scan {
 						}
 					}
 				} else {
-					p("scan: Problemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
+					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
 				}
 			} else {
-				p("scan: Equipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
+				p("scan:\t\t\t\tEquipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
 			}
 
 			exit(0);
@@ -480,7 +483,7 @@ sub scan {
 		}
 		
 	}
-	p("scan: Scan para la red $network finalizado.\n");
+	p("scan:\t\t\t\tScan para la red $network finalizado.\n");
 	exit(0);
 }
 
@@ -529,20 +532,20 @@ sub create_db {
 		
 		$db->disconnect;
 		
-		p("create_db: Por favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
+		p("create_db:\t\t\tPor favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
 		exit(0);
 	}
 }
 
 sub enable_netcheck {
 	system("mode con:cols=$columns lines=$lines_max");
-	p("main: Activamos el escanner.\n");
+	p("main:\t\t\t\tActivamos el escanner.\n\n");
 	$actived		= 1;
 }
 
 sub disable_netcheck {
 	system("mode con:cols=$columns lines=$lines_min");
-	p("main: Desactivado.\n");
+	p("main:\t\t\t\tDesactivado.");
 	$actived		= 0;
 }
 
@@ -567,12 +570,10 @@ sub main {
 				@networks		= get_all_networks();
 				@networks		= shuffle(@networks);
 
-				p("main: Escanearemos las siguientes redes: @networks\n");
+				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n");
 
 				foreach(@networks){
 					read_configuration();
-
-					p("main: Lanzando $_\n");
 					my $pid;
 
 					while (! (defined($pid))){
@@ -590,7 +591,7 @@ sub main {
 
 				}
 
-				p("main: No hay más redes para escanear\n");
+				p("main:\t\t\t\tNo hay más redes para escanear\n");
 
 				sleep 300;
 			}
