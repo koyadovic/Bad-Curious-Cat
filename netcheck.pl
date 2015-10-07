@@ -34,7 +34,7 @@ use Encode qw(decode encode);
 my $rutadb				= "database.db";
 my $columns				= 140;
 my $lines_max				= 55;
-my $lines_min				= 3;
+my $lines_min				= 4;
 
 #########################################################
 
@@ -362,8 +362,6 @@ sub get_alive_ips {
 
 	@resultados = shuffle(@resultados);
 
-	p("get_alive_ips:\t\tResultados de la red $network ->\t" . ($#resultados + 1) . " equipos.\n");
-
 	return @resultados;
 }
 
@@ -372,10 +370,10 @@ sub scan {
 	my $network 			= shift;
 	chomp($network);
 
-	p("scan:\t\t\t\tScan para la red $network comenzado.\n");
-
 	# De la red, nos quedamos con las direcciones IP que responden a ping.
 	my @resultados 			= get_alive_ips($network);
+
+	p("scan:\t\t\t\tEscaneando " . ($#resultados + 1) . " IPs en $network.\n");
 
 	my $hijos			= 0;
 	foreach $objetivo (@resultados){
@@ -437,12 +435,12 @@ sub scan {
 						# Sí que existe en la DB, hay que actualizarlo.
 						my $query = "";
 
-						$query .= "UPDATE computers SET name=\'$equipo\'";
-						$query .= ", model=\'$modelo\'" if ($modelo && !$db_model);
-						$query .= ", os=\'$sistemaoperativo\'" if ($sistemaoperativo && !$db_os);
-						$query .= ", last_ip=\'$objetivo\'";
-						$query .= ", last_seen=\'$time\'";
-						$query .= " WHERE serial=\'$numeroserie\'";
+						$query .= "UPDATE computers SET ";
+						$query .= "model=\'$modelo\', " if ($modelo && !$db_model);
+						$query .= "os=\'$sistemaoperativo\', " if ($sistemaoperativo && !$db_os);
+						$query .= "last_ip=\'$objetivo\', ";
+						$query .= "last_seen=\'$time\' ";
+						$query .= "WHERE serial=\'$numeroserie\' AND name=\'$equipo\'";
 
 						sql_do($query);
 						p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
@@ -545,7 +543,7 @@ sub enable_netcheck {
 
 sub disable_netcheck {
 	system("mode con:cols=$columns lines=$lines_min");
-	p("main:\t\t\t\tDesactivado.");
+	p("main:\t\t\t\tDesactivado.\n");
 	$actived		= 0;
 }
 
@@ -559,8 +557,12 @@ sub main {
 	while(1){
 		read_configuration();
 
+		my $h = get_current_hour();
+
+		p("main:\t\t\t\tactive: $actived\tCurrent hour: $h\tActive hours: @active_hours\n");
+
 		if(!$actived){
-			my $h = get_current_hour();
+
 
 			if( grep ( /^$h$/, @active_hours )) {
 
@@ -585,7 +587,6 @@ sub main {
 						scan($_);
 
 					} else {
-						# push(@children_pids, $pid);
 						sleep(80);
 					}
 
@@ -596,8 +597,6 @@ sub main {
 				sleep 300;
 			}
 		} else {
-			my $h = get_current_hour();
-
 			disable_netcheck() if ( ! (grep ( /^$h$/, @active_hours)));
 		}
 		sleep 120;
@@ -613,6 +612,6 @@ my $show_computer_users_found		= 1;
 my $show_computer_users_new_associations= 1;
 my @active_hours			= (10, 13, 17);
 
-my $actived = 0;
+my $actived;
 
 main();
