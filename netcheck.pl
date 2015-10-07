@@ -111,6 +111,7 @@ sub get_serial_number {
 	my ($objetivo)	= @_;
 	my $numeroserie	= "";
 
+
 	for (my $i = 0; $i < 2; $i ++) {
 		if(!$numeroserie) {
 			$numeroserie	= `wmic /node:$objetivo bios get serialnumber /format:list 2>NUL`;
@@ -120,6 +121,9 @@ sub get_serial_number {
 			sleep 1 if(!$numeroserie);
 		}
 	}
+
+	p("get_serial_number:\t\tObjetivo: $objetivo, S\/N: $numeroserie\n") if ($debug_get_serial_number);
+
 	return $numeroserie;
 }
 
@@ -128,12 +132,14 @@ sub get_computer_name {
 	my ($objetivo)	= @_;
 
 	# primer método
+	p("get_computer_name:\t\tProbando el primer método.\n") if ($debug_get_computer_name);
 	$equipo		= `wmic /node:$objetivo computersystem get name /format:list 2>NUL`;
 	$equipo		=~s/[\r,\n,Name=]//g;
 	chomp($equipo);
 
 	# método alternativo
 	if(!$equipo) {
+		p("get_computer_name:\t\tProbando el segundo método.\n") if ($debug_get_computer_name);
 		sleep 1;
 		my @lineas	= `nbtstat -a $objetivo`;
 		@lineas		= grep { $_ =~ /\<20\>/; } @lineas;
@@ -144,6 +150,7 @@ sub get_computer_name {
 
 	#método alternativo 2
 	if(!$equipo) {
+		p("get_computer_name:\t\tProbando el tercer método.\n") if ($debug_get_computer_name);
 		sleep 1;
 		my @lineas	= `ping -a -n 1 $objetivo`;
 		@lineas		= grep { $_ =~ /\[$objetivo\]/; } @lineas;
@@ -151,6 +158,8 @@ sub get_computer_name {
 		$equipo		=~ s/.*\s([\S]+)\s\[$objetivo\].*/\1/;
 		chomp($equipo);
 	}
+
+	p("get_computer_name:\t\tObjetivo: $objetivo, Equipo: $equipo.\n") if ($debug_get_computer_name);
 
 	return $equipo;
 }
@@ -163,6 +172,9 @@ sub get_model {
 	$modelo		=~ s/[\r\n]//g;
 
 	chomp($modelo);
+
+	p("get_model:\t\t\tObjetivo: $objetivo, Modelo: $modelo.\n") if($debug_get_model);
+
 	return $modelo;
 }
 
@@ -173,8 +185,12 @@ sub get_operating_system {
 	$sistemaoperativo	=~ s/Name=//;
 	$sistemaoperativo	=~ s/[\r\n]//g;
 	$sistemaoperativo	=~ s/\|.*//;
+	$sistemaoperativo	=~ s/\s+$//;
 
 	chomp($sistemaoperativo);
+
+	p("get_operating_system:\t\tObjetivo: $objetivo, Sistema operativo: $sistemaoperativo.\n") if($debug_get_operating_system);
+
 	return $sistemaoperativo;
 }
 
@@ -183,6 +199,8 @@ sub get_db_user {
 
 	my ($user_to_query)	= @_;
 	uc($user_to_query);
+
+	p("get_db_user:\t\t\tUsuario a consultar: $user_to_query\n") if($debug_get_db_user);
 
 	my $sql			= "SELECT * FROM users WHERE username = \'$user_to_query\'";
 	my $all			= sql_selectall_arrayref($sql);
@@ -195,7 +213,10 @@ sub get_db_user {
 	}
 
 	if($t){
+		p("get_db_user:\t\t\t$user_to_query existe en la db local.\n") if($debug_get_db_user);
 		$result{$user_to_query} = $db_complete_name;
+	} else {
+		p("get_db_user:\t\t\t$user_to_query no existe en la db local. Tendrá que ser consultado AD.\n") if($debug_get_db_user);
 	}
 
 	return %result;
@@ -222,7 +243,7 @@ sub get_ad_complete_name {
 
 					$line = decode('cp850', $line);
 
-					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n") if ($show_computer_users_found);
+					p("get_ad_complete_name:\t\t$user_to_query ->\t$line\n") if ($debug_get_ad_complete_name);
 					return $line;
 				}
 			}
@@ -237,7 +258,7 @@ sub get_ad_complete_name {
 sub add_db_user {
 	my ($username, $complete_name) = @_;
 	sql_do("INSERT INTO users VALUES (\'$username\', \'$complete_name\')");
-	p("add_db_user:\t\t\t$username ->\t$complete_name\n") if ($show_computer_users_found);
+	p("add_db_user:\t\t\t$username ->\t$complete_name\n") if ($debug_add_db_user);
 }
 
 sub get_computer_users {
@@ -289,7 +310,8 @@ sub get_computer_users {
 	@users = grep { $_ ne ""; } @users;
 	@users = uniq @users;
 
-	p("get_computer_users:\t\tEncontrado en $max_ruta: @users\n") if ($show_computer_users_found);
+	p("get_computer_users:\t\tEncontrado en $max_ruta: @users\n") if ($debug_get_computer_users);
+
 	return @users;
 }
 
@@ -315,7 +337,7 @@ sub associate_user_to_computer {
 
 		if(!$t){
 			sql_do("INSERT INTO computers_and_users VALUES (\'$serialnumber\', \'$computer_name\', \'$user\', \'$complete_name\')");
-			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($show_computer_users_new_associations);
+			p("associate_user_to_computer:\t$user ->\t$serialnumber\t$computer_name\n") if ($debug_associate_user_to_computer);
 		}
 	}
 
@@ -362,6 +384,8 @@ sub get_alive_ips {
 
 	@resultados = shuffle(@resultados);
 
+	p("get_alive_ips:\t\t" . ($#resultados + 1) . " IPs activas en la red $network\n") if($debug_get_alive_ips);
+
 	return @resultados;
 }
 
@@ -373,7 +397,7 @@ sub scan {
 	# De la red, nos quedamos con las direcciones IP que responden a ping.
 	my @resultados 			= get_alive_ips($network);
 
-	p("scan:\t\t\t\tEscaneando " . ($#resultados + 1) . " IPs en $network.\n");
+	p("scan:\t\t\t\tEscaneando " . ($#resultados + 1) . " IPs en $network.\n") if($debug_scan);
 
 	my $hijos			= 0;
 	foreach $objetivo (@resultados){
@@ -429,7 +453,7 @@ sub scan {
 						sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
 							"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
 
-						p("scan:\t\t\t\tAñadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n");						
+						p("scan:\t\t\t\tAñadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);					
 
 					} else {
 						# Sí que existe en la DB, hay que actualizarlo.
@@ -443,7 +467,7 @@ sub scan {
 						$query .= "WHERE serial=\'$numeroserie\' AND name=\'$equipo\'";
 
 						sql_do($query);
-						p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if ($show_computer_updates);
+						p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);
 
 					}
 
@@ -465,10 +489,10 @@ sub scan {
 						}
 					}
 				} else {
-					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($show_computer_name_or_os_errors);
+					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($debug_scan);
 				}
 			} else {
-				p("scan:\t\t\t\tEquipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if ($show_computer_serial_number_errors);
+				p("scan:\t\t\t\tEquipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if($debug_scan);
 			}
 
 			exit(0);
@@ -481,7 +505,9 @@ sub scan {
 		}
 		
 	}
-	p("scan:\t\t\t\tScan para la red $network finalizado.\n");
+
+	p("scan:\t\t\t\tScan para la red $network finalizado.\n") if($debug_scan);
+
 	exit(0);
 }
 
@@ -493,12 +519,20 @@ sub read_configuration {
 		my ($key, $value) = @$row;
 
 		switch ($key) {
-			case "show_computer_updates" { $show_computer_updates = $value; }
-			case "show_computer_serial_number_errors" { $show_computer_serial_number_errors = $value ; }
-			case "show_computer_name_or_os_errors" { $show_computer_name_or_os_errors = $value; }
-			case "show_computer_users_found" { $show_computer_users_found = $value; }
-			case "show_computer_users_new_associations" { $show_computer_users_new_associations = $value; }
 			case "active_hours" { @active_hours = split(',', $value); }
+
+			case "debug_get_serial_number"		{ $debug_get_serial_number		= $value; }
+			case "debug_get_computer_name"		{ $debug_get_computer_name		= $value; }
+			case "debug_get_model"			{ $debug_get_model			= $value; }
+			case "debug_get_operating_system"	{ $debug_get_operating_system		= $value; }
+			case "debug_get_db_user"		{ $debug_get_db_user			= $value; }
+			case "debug_get_ad_complete_name"	{ $debug_get_ad_complete_name		= $value; }
+			case "debug_add_db_user"		{ $debug_add_db_user			= $value; }
+			case "debug_get_computer_users"		{ $debug_get_computer_users		= $value; }
+			case "debug_associate_user_to_computer"	{ $debug_associate_user_to_computer	= $value; }
+			case "debug_get_alive_ips"		{ $debug_get_alive_ips			= $value; }
+			case "debug_scan"			{ $debug_scan				= $value; }
+			case "debug_main"			{ $debug_main				= $value; }
 		}
 	}
 
@@ -519,11 +553,20 @@ sub create_db {
 		$db->do("CREATE TABLE configuration (key TEXT, value TEXT)");
 		my $default_config_sql = "";
 		$default_config_sql .= "INSERT INTO configuration (key, value) VALUES ";
-		$default_config_sql .= "('show_computer_updates', '1'),";
-		$default_config_sql .= "('show_computer_serial_number_errors','1'),";
-		$default_config_sql .= "('show_computer_name_or_os_errors','1'),";
-		$default_config_sql .= "('show_computer_users_found', '1'),";
-		$default_config_sql .= "('show_computer_users_new_associations', '1'),";
+
+		$default_config_sql .= "('debug_get_serial_number', '0'),";
+		$default_config_sql .= "('debug_get_computer_name','0'),";
+		$default_config_sql .= "('debug_get_model','0'),";
+		$default_config_sql .= "('debug_get_operating_system', '0'),";
+		$default_config_sql .= "('debug_get_db_user', '0'),";
+		$default_config_sql .= "('debug_get_ad_complete_name', '0'),";
+		$default_config_sql .= "('debug_add_db_user', '0'),";
+		$default_config_sql .= "('debug_get_computer_users', '0'),";
+		$default_config_sql .= "('debug_associate_user_to_computer', '0'),";
+		$default_config_sql .= "('debug_get_alive_ips', '0'),";
+		$default_config_sql .= "('debug_scan', '1'),";
+		$default_config_sql .= "('debug_main', '1'),";
+
 		$default_config_sql .= "('active_hours', '10,13,17')";
 
 		$db->do($default_config_sql);
@@ -537,13 +580,13 @@ sub create_db {
 
 sub enable_netcheck {
 	system("mode con:cols=$columns lines=$lines_max");
-	p("main:\t\t\t\tActivamos el escanner.\n\n");
+	p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 	$actived		= 1;
 }
 
 sub disable_netcheck {
 	system("mode con:cols=$columns lines=$lines_min");
-	p("main:\t\t\t\tDesactivado.\n");
+	p("main:\t\t\t\tDesactivado.\n") if($debug_main);
 	$actived		= 0;
 }
 
@@ -559,7 +602,7 @@ sub main {
 
 		my $h = get_current_hour();
 
-		p("main:\t\t\t\tactive: $actived\tCurrent hour: $h\tActive hours: @active_hours\n");
+		p("main:\t\t\t\tactive: $actived\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
 
 		if(!$actived){
 
@@ -572,10 +615,11 @@ sub main {
 				@networks		= get_all_networks();
 				@networks		= shuffle(@networks);
 
-				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n");
+				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
 				foreach(@networks){
 					read_configuration();
+
 					my $pid;
 
 					while (! (defined($pid))){
@@ -584,6 +628,7 @@ sub main {
 					}
 
 					if(!$pid) {
+						p("main:\t\t\t\tLlamamos a la función scan($_)\n") if($debug_main);
 						scan($_);
 
 					} else {
@@ -592,8 +637,7 @@ sub main {
 
 				}
 
-				p("main:\t\t\t\tNo hay más redes para escanear\n");
-
+				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 				sleep 300;
 			}
 		} else {
@@ -605,12 +649,20 @@ sub main {
 
 # Global variables
 my @users_to_ignore;
-my $show_computer_updates		= 1;
-my $show_computer_serial_number_errors	= 1;
-my $show_computer_name_or_os_errors	= 1;
-my $show_computer_users_found		= 1;
-my $show_computer_users_new_associations= 1;
 my @active_hours			= (10, 13, 17);
+
+my $debug_get_serial_number		= 0;
+my $debug_get_computer_name		= 0;
+my $debug_get_model			= 0;
+my $debug_get_operating_system		= 0;
+my $debug_get_db_user			= 0;
+my $debug_get_ad_complete_name		= 0;
+my $debug_add_db_user			= 0;
+my $debug_get_computer_users		= 0;
+my $debug_associate_user_to_computer	= 0;
+my $debug_get_alive_ips			= 0;
+my $debug_scan				= 0;
+my $debug_main				= 0;
 
 my $actived;
 
