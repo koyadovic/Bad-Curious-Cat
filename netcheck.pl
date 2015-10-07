@@ -132,14 +132,12 @@ sub get_computer_name {
 	my ($objetivo)	= @_;
 
 	# primer método
-	p("get_computer_name:\t\tProbando el primer método.\n") if ($debug_get_computer_name);
 	$equipo		= `wmic /node:$objetivo computersystem get name /format:list 2>NUL`;
 	$equipo		=~s/[\r,\n,Name=]//g;
 	chomp($equipo);
 
 	# método alternativo
 	if(!$equipo) {
-		p("get_computer_name:\t\tProbando el segundo método.\n") if ($debug_get_computer_name);
 		sleep 1;
 		my @lineas	= `nbtstat -a $objetivo`;
 		@lineas		= grep { $_ =~ /\<20\>/; } @lineas;
@@ -150,7 +148,6 @@ sub get_computer_name {
 
 	#método alternativo 2
 	if(!$equipo) {
-		p("get_computer_name:\t\tProbando el tercer método.\n") if ($debug_get_computer_name);
 		sleep 1;
 		my @lineas	= `ping -a -n 1 $objetivo`;
 		@lineas		= grep { $_ =~ /\[$objetivo\]/; } @lineas;
@@ -200,7 +197,6 @@ sub get_db_user {
 	my ($user_to_query)	= @_;
 	uc($user_to_query);
 
-	p("get_db_user:\t\t\tUsuario a consultar: $user_to_query\n") if($debug_get_db_user);
 
 	my $sql			= "SELECT * FROM users WHERE username = \'$user_to_query\'";
 	my $all			= sql_selectall_arrayref($sql);
@@ -250,7 +246,7 @@ sub get_ad_complete_name {
 			sleep 1;
 		}
 	}
-
+	p("get_ad_complete_name:\t\t$user_to_query ->\tSin resultados\n") if ($debug_get_ad_complete_name);
 	return "";
 }
 
@@ -402,6 +398,8 @@ sub scan {
 	my $hijos			= 0;
 	foreach $objetivo (@resultados){
 
+		read_configuration();
+
 		# Si los procesos hijo han superado el límite esperamos.
 		if ($hijos > 3) {
 			$pid=wait();
@@ -492,7 +490,7 @@ sub scan {
 					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($debug_scan);
 				}
 			} else {
-				p("scan:\t\t\t\tEquipo $objetivo no añadido .. No se pudo sacar el número de serie.\n") if($debug_scan);
+				p("scan:\t\t\t\tEquipo $objetivo no añadido. No se pudo sacar el número de serie.\n") if($debug_scan);
 			}
 
 			exit(0);
@@ -582,6 +580,7 @@ sub enable_netcheck {
 	system("mode con:cols=$columns lines=$lines_max");
 	p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 	$actived		= 1;
+	$last_active_hour	= get_current_hour();
 }
 
 sub disable_netcheck {
@@ -597,7 +596,8 @@ sub main {
 	# Inicia desactivado
 	disable_netcheck();
 
-	while(1){
+	while("siempre a tope"){
+
 		read_configuration();
 
 		my $h = get_current_hour();
@@ -607,7 +607,7 @@ sub main {
 		if(!$actived){
 
 
-			if( grep ( /^$h$/, @active_hours )) {
+			if( (grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
 
 				enable_netcheck();
 
@@ -618,8 +618,6 @@ sub main {
 				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
 				foreach(@networks){
-					read_configuration();
-
 					my $pid;
 
 					while (! (defined($pid))){
@@ -628,20 +626,20 @@ sub main {
 					}
 
 					if(!$pid) {
-						p("main:\t\t\t\tLlamamos a la función scan($_)\n") if($debug_main);
+						p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
 						scan($_);
 
 					} else {
-						sleep(80);
+						sleep(60);
 					}
 
 				}
 
 				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 				sleep 300;
+
+				disable_netcheck();
 			}
-		} else {
-			disable_netcheck() if ( ! (grep ( /^$h$/, @active_hours)));
 		}
 		sleep 120;
 	}
@@ -650,6 +648,7 @@ sub main {
 # Global variables
 my @users_to_ignore;
 my @active_hours			= (10, 13, 17);
+my $last_active_hour			= -1;
 
 my $debug_get_serial_number		= 0;
 my $debug_get_computer_name		= 0;
