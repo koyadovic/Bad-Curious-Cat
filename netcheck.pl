@@ -500,16 +500,6 @@ sub scan {
 
 		} elsif($pid) {
 			# Proceso padre
-
-			$SIG{CHLD} = sub {
-				local ($?, $!);
-				until (-1 == (my $pid = waitpid(-1, WNOHANG))) {
-					p("SIGCHLD:\t\t\tLlamado el del scan.\n");
-					return if $pid == 0;
-					p("SIGCHLD:\t\t\t$pid exited with status $?\n");
-				}
-			};
-
 			$hijos++;
 			sleep 1;
 		} else {
@@ -661,15 +651,6 @@ sub main {
 	}
 }
 
-#$SIG{CHLD} = sub {
-#	p("SIGCHLD:\t\t\tLlamado el del main.\n");
-#	local ($?, $!);
-#	until (-1 == (my $pid = waitpid(-1, WNOHANG))) {
-#		return if $pid == 0;
-#	}
-#};
-
-$SIG{CHLD} = 'IGNORE';
 
 # Global variables
 my @users_to_ignore;
@@ -690,5 +671,7 @@ my $debug_scan				= 0;
 my $debug_main				= 0;
 
 my $actived;
+
+$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
 
 main();
