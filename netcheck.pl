@@ -22,15 +22,14 @@ use DBI;
 use DBI qw(:sql_types);
 
 use Switch;
+
 use POSIX 'strftime';
+use POSIX ":sys_wait_h";
 
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
 use Encode qw(decode encode);
-
-use POSIX ':sys_wait_h'; # WNOHANG
-
 
 #########################################################
 # Para toquetear
@@ -43,6 +42,28 @@ my $lines_min				= 4;
 my $seconds_to_wait_for_each_scan_call	= 120;
 my $max_scan_children_processes		= 2;
 
+#########################################################
+# Global variables
+my @users_to_ignore;
+my @active_hours			= (10, 13, 17);
+my $last_active_hour			= -1;
+
+my $debug_get_serial_number		= 0;
+my $debug_get_computer_name		= 0;
+my $debug_get_model			= 0;
+my $debug_get_operating_system		= 0;
+my $debug_get_db_user			= 0;
+my $debug_get_ad_complete_name		= 0;
+my $debug_add_db_user			= 0;
+my $debug_get_computer_users		= 0;
+my $debug_associate_user_to_computer	= 0;
+my $debug_get_alive_ips			= 0;
+my $debug_scan				= 0;
+my $debug_main				= 0;
+
+my $actived;
+
+$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
 #########################################################
 
 sub get_database {
@@ -508,6 +529,14 @@ sub scan {
 		
 	}
 
+	my $kid;
+	p("scan:\t\t\t\tScan para la red $network esperando a que los procesos hijos finalicen.\n");
+	do {
+		$kid = waitpid(-1, WNOHANG);
+		sleep 5;
+
+	} while($kid > -1);
+
 	p("scan:\t\t\t\tScan para la red $network finalizado.\n") if($debug_scan);
 	exit(0);
 }
@@ -605,7 +634,7 @@ sub main {
 
 		my $h = get_current_hour();
 
-		p("main:\t\t\t\tactive: $actived\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+		p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
 
 		if(!$actived){
 
@@ -640,38 +669,24 @@ sub main {
 
 				}
 
+				my $kid;
+				p("main:\t\t\t\tEsperando a que todos los scans pendientes de terminar acaben.\n");
+
+				do {
+					$kid = waitpid(-1, WNOHANG);
+					sleep 5;
+
+				} while($kid > -1);
+
 				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 
-				sleep 240;
+				sleep 10;
 
 				disable_netcheck();
 			}
 		}
-		sleep 120;
+		sleep 30;
 	}
 }
-
-
-# Global variables
-my @users_to_ignore;
-my @active_hours			= (10, 13, 17);
-my $last_active_hour			= -1;
-
-my $debug_get_serial_number		= 0;
-my $debug_get_computer_name		= 0;
-my $debug_get_model			= 0;
-my $debug_get_operating_system		= 0;
-my $debug_get_db_user			= 0;
-my $debug_get_ad_complete_name		= 0;
-my $debug_add_db_user			= 0;
-my $debug_get_computer_users		= 0;
-my $debug_associate_user_to_computer	= 0;
-my $debug_get_alive_ips			= 0;
-my $debug_scan				= 0;
-my $debug_main				= 0;
-
-my $actived;
-
-$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
 
 main();
