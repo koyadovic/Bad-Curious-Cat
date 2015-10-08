@@ -29,18 +29,27 @@ use List::MoreUtils qw(uniq);
 
 use Encode qw(decode encode);
 
+use POSIX ':sys_wait_h'; # WNOHANG
+
+
 #########################################################
 # Para toquetear
 my $rutadb				= "database.db";
+
 my $columns				= 140;
 my $lines_max				= 55;
 my $lines_min				= 4;
+
+my $seconds_to_wait_for_each_scan_call	= 120;
+my $max_scan_children_processes		= 2;
 
 #########################################################
 
 sub get_database {
 	my $db = DBI->connect("dbi:SQLite:" . $rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
 	$db->{sqlite_unicode} = 1;
+	$db->sqlite_busy_timeout(1800000);
+
 	return $db;
 }
 
@@ -398,20 +407,14 @@ sub scan {
 	my $hijos			= 0;
 	foreach $objetivo (@resultados){
 
-		read_configuration();
-
 		# Si los procesos hijo han superado el límite esperamos.
-		if ($hijos > 3) {
+		if ($hijos => $max_scan_children_processes) {
 			$pid=wait();
 			$hijos--;
 		}
 
 		# Hacemos un nuevo proceso hijo
-		undef($pid);
-		while(! defined($pid)){
-			$pid = fork();
-			sleep 1 if(! defined($pid));
-		}
+		$pid = fork();
 
 		# Si el $pid es 0, es que se trata del proceso hijo
 		if(!$pid){
@@ -490,22 +493,32 @@ sub scan {
 					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($debug_scan);
 				}
 			} else {
-				p("scan:\t\t\t\tEquipo $objetivo no añadido. No se pudo sacar el número de serie.\n") if($debug_scan);
+				# p("scan:\t\t\t\tEquipo $objetivo no añadido. No se pudo sacar el número de serie.\n") if($debug_scan);
 			}
 
 			exit(0);
 
-		} else {
-
+		} elsif($pid) {
 			# Proceso padre
+
+			$SIG{CHLD} = sub {
+				local ($?, $!);
+				until (-1 == (my $pid = waitpid(-1, WNOHANG))) {
+					p("SIGCHLD:\t\t\tLlamado el del scan.\n");
+					return if $pid == 0;
+					p("SIGCHLD:\t\t\t$pid exited with status $?\n");
+				}
+			};
+
 			$hijos++;
 			sleep 1;
+		} else {
+			p("Cagada, no se pudollamar a fork()\n");
 		}
 		
 	}
 
 	p("scan:\t\t\t\tScan para la red $network finalizado.\n") if($debug_scan);
-
 	exit(0);
 }
 
@@ -618,25 +631,28 @@ sub main {
 				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
 				foreach(@networks){
-					my $pid;
+					read_configuration();
 
-					while (! (defined($pid))){
-						$pid 	= fork();
-						sleep 1 if (! (defined ($pid)));
-					}
+					my $pid = fork();
 
 					if(!$pid) {
 						p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
 						scan($_);
 
+					} elsif($pid) {
+
+						sleep($seconds_to_wait_for_each_scan_call);
+
 					} else {
-						sleep(60);
+						p("main:\t\t\t\tNo se ha podido hacer fork();");
+						exit(1);
 					}
 
 				}
 
 				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
-				sleep 300;
+
+				sleep 240;
 
 				disable_netcheck();
 			}
@@ -644,6 +660,16 @@ sub main {
 		sleep 120;
 	}
 }
+
+#$SIG{CHLD} = sub {
+#	p("SIGCHLD:\t\t\tLlamado el del main.\n");
+#	local ($?, $!);
+#	until (-1 == (my $pid = waitpid(-1, WNOHANG))) {
+#		return if $pid == 0;
+#	}
+#};
+
+$SIG{CHLD} = 'IGNORE';
 
 # Global variables
 my @users_to_ignore;
