@@ -24,7 +24,6 @@ use DBI qw(:sql_types);
 use Switch;
 
 use POSIX 'strftime';
-use POSIX ":sys_wait_h";
 
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
@@ -39,8 +38,9 @@ my $columns				= 140;
 my $lines_max				= 55;
 my $lines_min				= 4;
 
-my $seconds_to_wait_for_each_scan_call	= 120;
-my $max_scan_children_processes		= 2;
+my $seconds_to_wait_for_each_scan_call	= 10;
+my $max_scan_children_processes		= 12;
+my $max_simultaneous_scans		= 3;
 
 #########################################################
 # Global variables
@@ -429,7 +429,7 @@ sub scan {
 	foreach $objetivo (@resultados){
 
 		# Si los procesos hijo han superado el límite esperamos.
-		if ($hijos => $max_scan_children_processes) {
+		if ($hijos >= $max_scan_children_processes) {
 			$pid=wait();
 			$hijos--;
 		}
@@ -522,20 +522,11 @@ sub scan {
 		} elsif($pid) {
 			# Proceso padre
 			$hijos++;
-			sleep 1;
 		} else {
-			p("Cagada, no se pudollamar a fork()\n");
+			p("Cagada, no se pudo llamar a fork()\n");
 		}
 		
 	}
-
-	my $kid;
-	p("scan:\t\t\t\tScan para la red $network esperando a que los procesos hijos finalicen.\n");
-	do {
-		$kid = waitpid(-1, WNOHANG);
-		sleep 5;
-
-	} while($kid > -1);
 
 	p("scan:\t\t\t\tScan para la red $network finalizado.\n") if($debug_scan);
 	exit(0);
@@ -648,9 +639,16 @@ sub main {
 				@networks		= shuffle(@networks);
 
 				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
+				my $hijos = 0;
 
 				foreach(@networks){
 					read_configuration();
+
+					# Si los procesos hijo han superado el límite esperamos.
+					if ($hijos >= $max_simultaneous_scans) {
+						$pid = wait();
+						$hijos--;
+					}
 
 					my $pid = fork();
 
@@ -659,7 +657,7 @@ sub main {
 						scan($_);
 
 					} elsif($pid) {
-
+						$hijos++;
 						sleep($seconds_to_wait_for_each_scan_call);
 
 					} else {
@@ -668,15 +666,6 @@ sub main {
 					}
 
 				}
-
-				my $kid;
-				p("main:\t\t\t\tEsperando a que todos los scans pendientes de terminar acaben.\n");
-
-				do {
-					$kid = waitpid(-1, WNOHANG);
-					sleep 5;
-
-				} while($kid > -1);
 
 				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 
