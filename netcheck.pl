@@ -30,6 +30,8 @@ use List::MoreUtils qw(uniq);
 
 use Encode qw(decode encode);
 
+use Win32::GUI();
+
 #########################################################
 # Para toquetear
 my $rutadb				= "database.db";
@@ -64,6 +66,50 @@ my $debug_main				= 0;
 my $actived;
 
 $SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
+
+
+#########################################################
+# Win32 main Window
+my $width = 800;
+my $height = 600;
+
+# Creamos la ventana
+my $main = Win32::GUI::Window->new(
+	-name		=>	'Main',
+	-width		=>	$width,
+	-height		=>	$height,
+	-title		=>	'NetCheck',
+	-minsize	=>	[$width, $height],
+	-maxsize	=>	[$width, $height],
+);
+
+# Escondemos la ventana del terminal
+my $hw = Win32::GUI::GetPerlWindow();
+Win32::GUI::Hide($hw);
+
+# Centramos la ventana
+my $desk = Win32::GUI::GetDesktopWindow();
+my $wi = Win32::GUI::Width($desk);
+my $he = Win32::GUI::Height($desk);
+my $x = ($wi - $width) / 2;
+my $y = ($he - $height) / 2;
+$main->Move($x, $y);
+
+
+my $textf = $main->AddTextfield(
+	-name		=>	"TextField",
+	-left		=>	0,
+	-top		=>	0,
+	-width		=>	$width,
+	-height		=>	$height,
+	-multiline	=>	1,
+	-readonly	=>	1,
+);
+
+sub Main_Terminate{
+	-1;
+}
+
 #########################################################
 
 sub get_database {
@@ -127,14 +173,19 @@ sub get_current_datetime {
 
 # Ya que usamos UTF-8, codifica los prints para que en la consola de Windows se vea todo correctamente
 sub p {
-	my ($text)	= @_;
-	my $t		= get_timestamp();
-	my $pid		= $$;
-	$pid		= sprintf '%6s', $pid;
+	my ($original_text)	= @_;
+	my $t			= get_timestamp();
+	my $pid			= $$;
+	$pid			= sprintf '%6s', $pid;
 
-	$text		= encode('cp850', $text);
-
+	# A la terminal
+	$text			= encode('cp850', $original_text);
 	print " [$t] [$pid] $text";
+
+	# A la ventana de Windows.
+	chomp($original_text);
+	$original_text		= encode('iso-8859-15', $original_text);
+	$textf->Append("[$t] [$pid] $original_text\r\n");
 }
 
 sub get_serial_number {
@@ -619,62 +670,68 @@ sub main {
 	# Inicia desactivado
 	disable_netcheck();
 
-	while("siempre a tope"){
+	$main->Show();
 
-		read_configuration();
+	if(my $p = fork()) {
+		Win32::GUI::Dialog();
+	} else {
 
-		my $h = get_current_hour();
+		while("siempre a tope"){
+			read_configuration();
 
-		p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+			my $h = get_current_hour();
 
-		if(!$actived){
+			p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+
+			if(!$actived){
 
 
-			if( (grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
+				if( (grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
 
-				enable_netcheck();
+					enable_netcheck();
 
-				@users_to_ignore	= get_users_to_ignore();
-				@networks		= get_all_networks();
-				@networks		= shuffle(@networks);
+					@users_to_ignore	= get_users_to_ignore();
+					@networks		= get_all_networks();
+					@networks		= shuffle(@networks);
 
-				p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
-				my $hijos = 0;
+					p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
+					my $hijos = 0;
 
-				foreach(@networks){
-					read_configuration();
+					foreach(@networks){
+						read_configuration();
 
-					# Si los procesos hijo han superado el límite esperamos.
-					if ($hijos >= $max_simultaneous_scans) {
-						$pid = wait();
-						$hijos--;
+						# Si los procesos hijo han superado el límite esperamos.
+						if ($hijos >= $max_simultaneous_scans) {
+							$pid = wait();
+							$hijos--;
+						}
+
+						my $pid = fork();
+
+						if(!$pid) {
+							p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
+							scan($_);
+
+						} elsif($pid) {
+							$hijos++;
+							sleep($seconds_to_wait_for_each_scan_call);
+
+						} else {
+							p("main:\t\t\t\tNo se ha podido hacer fork();");
+							exit(1);
+						}
+
 					}
 
-					my $pid = fork();
+					p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 
-					if(!$pid) {
-						p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
-						scan($_);
+					sleep 10;
 
-					} elsif($pid) {
-						$hijos++;
-						sleep($seconds_to_wait_for_each_scan_call);
-
-					} else {
-						p("main:\t\t\t\tNo se ha podido hacer fork();");
-						exit(1);
-					}
-
+					disable_netcheck();
 				}
-
-				p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
-
-				sleep 10;
-
-				disable_netcheck();
 			}
+			sleep 30;
 		}
-		sleep 30;
 	}
 }
 
