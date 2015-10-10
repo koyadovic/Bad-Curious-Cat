@@ -37,10 +37,10 @@ my $rutadb				= "database.db";
 my $columns				= 140;
 my $lines_max				= 55;
 my $lines_min				= 4;
-my $console_encoding			= 'cp850';
+my $console_encoding			= "cp850";
 
 # For the window
-my $window_encoding			= 'iso-8859-15';
+my $window_encoding			= "iso-8859-15";
 
 # Timing options of the scan function.
 # Each scan call check one record in networks table.
@@ -670,16 +670,16 @@ sub disable_netcheck {
 sub main {
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
-	
+
+	read_configuration();
+
 	# Inicia desactivado
 	disable_netcheck();
-
-	$main->Show();
-
+	
 	if(my $p = fork()) {
+		$main->Show();
 		Win32::GUI::Dialog();
 	} else {
-
 		while("siempre a tope"){
 			read_configuration();
 
