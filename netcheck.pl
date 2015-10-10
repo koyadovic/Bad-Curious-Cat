@@ -17,35 +17,40 @@
 #
 
 use utf8;
+use Switch;
+use Encode qw(decode encode);
+use Win32::GUI();
+use POSIX 'strftime';
 
 use DBI;
 use DBI qw(:sql_types);
 
-use Switch;
-
-use POSIX 'strftime';
-
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
-use Encode qw(decode encode);
-
-use Win32::GUI();
 
 #########################################################
-# Para toquetear
+# Para tocar
 my $rutadb				= "database.db";
 
+# For the console
 my $columns				= 140;
 my $lines_max				= 55;
 my $lines_min				= 4;
+my $console_encoding			= 'cp850';
 
+# For the window
+my $window_encoding			= 'iso-8859-15';
+
+# Timing options of the scan function.
+# Each scan call check one record in networks table.
 my $seconds_to_wait_for_each_scan_call	= 10;
 my $max_scan_children_processes		= 12;
 my $max_simultaneous_scans		= 3;
 
+
 #########################################################
-# Global variables
+# Global variables (NO TOCAR)
 my @users_to_ignore;
 my @active_hours			= (10, 13, 17);
 my $last_active_hour			= -1;
@@ -66,7 +71,6 @@ my $debug_main				= 0;
 my $actived;
 
 $SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
-
 
 #########################################################
 # Win32 main Window
@@ -100,8 +104,8 @@ my $textf = $main->AddTextfield(
 	-name		=>	"TextField",
 	-left		=>	0,
 	-top		=>	0,
-	-width		=>	$width,
-	-height		=>	$height,
+	-width		=>	$width - 10,
+	-height		=>	$height - 10,
 	-multiline	=>	1,
 	-readonly	=>	1,
 );
@@ -179,12 +183,12 @@ sub p {
 	$pid			= sprintf '%6s', $pid;
 
 	# A la terminal
-	$text			= encode('cp850', $original_text);
+	$text			= encode($console_encoding, $original_text);
 	print " [$t] [$pid] $text";
 
 	# A la ventana de Windows.
 	chomp($original_text);
-	$original_text		= encode('iso-8859-15', $original_text);
+	$original_text		= encode($window_encoding, $original_text);
 	$textf->Append("[$t] [$pid] $original_text\r\n");
 }
 
@@ -681,7 +685,7 @@ sub main {
 
 			my $h = get_current_hour();
 
-			p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+			# p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
 
 			if(!$actived){
 
