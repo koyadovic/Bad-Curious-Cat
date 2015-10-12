@@ -19,7 +19,6 @@
 use utf8;
 use Switch;
 use Encode qw(decode encode);
-use Win32::GUI();
 use POSIX 'strftime';
 
 use DBI;
@@ -28,6 +27,7 @@ use DBI qw(:sql_types);
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
+use Win32::GUI();
 
 #########################################################
 # Para tocar
@@ -45,15 +45,17 @@ my $window_encoding			= "iso-8859-15";
 # Timing options of the scan function.
 # Each scan call check one record in networks table.
 my $seconds_to_wait_for_each_scan_call	= 10;
-my $max_scan_children_processes		= 12;
+my $max_scan_children_processes		= 10;
 my $max_simultaneous_scans		= 3;
 
 
 #########################################################
 # Global variables (NO TOCAR)
+my $tool_name				= "Bad Curious Cat";
 my @users_to_ignore;
 my @active_hours			= (10, 13, 17);
 my $last_active_hour			= -1;
+my $h, $last_h;
 
 my $debug_get_serial_number		= 0;
 my $debug_get_computer_name		= 0;
@@ -75,17 +77,29 @@ $SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
 #########################################################
 # Win32 main Window
 my $width = 800;
-my $height = 600;
+my $height = 250;
+
+# Icono
+#my $icon = Win32::GUI::Icon->new("cci.ico");
 
 # Creamos la ventana
 my $main = Win32::GUI::Window->new(
 	-name		=>	'Main',
 	-width		=>	$width,
 	-height		=>	$height,
-	-title		=>	'NetCheck',
+	-title		=>	'Curious Cat Indexer',
 	-minsize	=>	[$width, $height],
 	-maxsize	=>	[$width, $height],
 );
+#$main->SetIcon($icon);
+
+# Imagen
+# my $cci = Win32::GUI::Bitmap->new("cci.bmp");
+
+sub Main_Terminate {
+	-1;
+}
+
 
 # Escondemos la ventana del terminal
 my $hw = Win32::GUI::GetPerlWindow();
@@ -100,19 +114,20 @@ my $y = ($he - $height) / 2;
 $main->Move($x, $y);
 
 
+# Textfield dpnde iremos volcando la información.
 my $textf = $main->AddTextfield(
 	-name		=>	"TextField",
 	-left		=>	0,
-	-top		=>	0,
+	-top		=>	1,
 	-width		=>	$width - 10,
-	-height		=>	$height - 10,
+	-height		=>	$height - 26,
+	-background	=>	[50,	50,	50],
+	-foreground	=>	[0,	250,	200],
 	-multiline	=>	1,
 	-readonly	=>	1,
+	-vscroll	=>	1,
 );
 
-sub Main_Terminate{
-	-1;
-}
 
 #########################################################
 
@@ -189,7 +204,9 @@ sub p {
 	# A la ventana de Windows.
 	chomp($original_text);
 	$original_text		= encode($window_encoding, $original_text);
-	$textf->Append("[$t] [$pid] $original_text\r\n");
+	$textf->Append("\r\n") if($textf->Text() ne "");
+	$textf->Append("[$t] [$pid] $original_text");
+	Win32::GUI::DoEvents();
 }
 
 sub get_serial_number {
@@ -577,6 +594,7 @@ sub scan {
 		} elsif($pid) {
 			# Proceso padre
 			$hijos++;
+			sleep 1;
 		} else {
 			p("Cagada, no se pudo llamar a fork()\n");
 		}
@@ -656,15 +674,19 @@ sub create_db {
 
 sub enable_netcheck {
 	system("mode con:cols=$columns lines=$lines_max");
+	$textf->Text("");
+	Win32::GUI::DoEvents();
 	p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 	$actived		= 1;
 	$last_active_hour	= get_current_hour();
+	Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
 }
 
 sub disable_netcheck {
 	system("mode con:cols=$columns lines=$lines_min");
 	p("main:\t\t\t\tDesactivado.\n") if($debug_main);
 	$actived		= 0;
+	Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
 }
 
 sub main {
@@ -679,13 +701,21 @@ sub main {
 	if(my $p = fork()) {
 		$main->Show();
 		Win32::GUI::Dialog();
+		exit(0);
 	} else {
+		$last_h = -1;
+		$h = get_current_hour();
+
 		while("siempre a tope"){
 			read_configuration();
 
-			my $h = get_current_hour();
+			$h = get_current_hour();
 
-			# p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+			if($h != $last_h) {
+				p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+				Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
+				$last_h = $h;
+			}
 
 			if(!$actived){
 
@@ -734,7 +764,7 @@ sub main {
 					disable_netcheck();
 				}
 			}
-			sleep 30;
+			sleep 10;
 		}
 	}
 }
