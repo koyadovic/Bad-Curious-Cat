@@ -1,4 +1,4 @@
-# NetCheck
+# Bad Curious Cat
 A simple tool to discover network computers, extract for each one its serial number, os version and more information. This tool is intended to be used in a corporative domain environment.
 
 Every time that NetCheck discover a change in the name of a computer added, it will add another entry to maintain which
