@@ -35,7 +35,7 @@ my $rutadb				= "database.db";
 
 # For the console
 my $columns				= 140;
-my $lines_max				= 25;
+my $lines_max				= 12;
 my $lines_min				= 4;
 my $console_encoding			= "cp850";
 
@@ -600,6 +600,7 @@ sub create_db {
 
 sub main {
 	system("mode con:cols=$columns lines=$lines_max");
+	system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
 
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
@@ -607,6 +608,7 @@ sub main {
 	read_configuration();
 
 	if($arg eq "-a") { # analyze
+		system("mode con:cols=$columns lines=$lines_max");
 		p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 
 		@users_to_ignore	= get_users_to_ignore();
@@ -615,11 +617,21 @@ sub main {
 
 		p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
+		$h = get_current_hour();
+		my $last_title = "", $title = "Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
+
 		my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
 
 		MAIN_LOOP:
 		foreach(@networks){
 			read_configuration();
+			$h = get_current_hour();
+			system("title $tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
+
+			if($last_title ne $title){
+				$last_title = $title;
+				system("title $title");
+			}
 
 			my $pid = $pm->start and next MAIN_LOOP;
 
@@ -636,19 +648,18 @@ sub main {
 		sleep 10;
 
 		exec( $^X, $0, "-s $last_active_hour");
-		exit(0);
 
 	} else { # sleep
+		system("mode con:cols=$columns lines=$lines_min");
 		p("main:\t\t\t\tDesactivado.\n") if($debug_main);
 		until((grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
 			sleep 10;
 			read_configuration();
 			$h = get_current_hour();
-			p("main:\t\t\t\tactive: No\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+			system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
 		}
 
 		exec( $^X, $0, "-a $h");
-		exit(0);
 	}
 }
 
