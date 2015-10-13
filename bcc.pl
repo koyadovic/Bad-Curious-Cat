@@ -29,18 +29,18 @@ use DBI qw(:sql_types);
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
+use Win32::GUI();
+
 #########################################################
 # Para tocar
 my $rutadb				= "database.db";
+my $run_in_background			= 0;
 
 # For the console
 my $columns				= 140;
 my $lines_max				= 12;
 my $lines_min				= 4;
 my $console_encoding			= "cp850";
-
-# For the window
-my $window_encoding			= "iso-8859-15";
 
 # Timing options of the scan function.
 # Each scan call check one IP address.
@@ -52,7 +52,7 @@ my $max_simultaneous_scans		= 2;
 # Global variables (NO TOCAR)
 my $tool_name				= "Bad Curious Cat";
 my @users_to_ignore;
-my @active_hours			= (10, 13, 17);
+my @active_hours			= (9, 11, 13, 16, 18);
 my $h					= -1;
 
 my $debug_get_serial_number		= 0;
@@ -70,14 +70,12 @@ my $debug_main				= 0;
 
 my $actived;
 
-#$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
-
 my $last_active_hour;
 my ($arg, $last_active_hour) = @ARGV;
 $last_active_hour = -1 if(!$last_active_hour);
 
 #########################################################
-
+		
 sub get_database {
 	my $db = DBI->connect("dbi:SQLite:" . $rutadb, "", "", {RaiseError => 1, AutoCommit => 1});
 	$db->{sqlite_unicode} = 1;
@@ -600,67 +598,106 @@ sub create_db {
 
 sub main {
 	system("mode con:cols=$columns lines=$lines_max");
-	system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
 
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
 
 	read_configuration();
 
-	if($arg eq "-a") { # analyze
-		system("mode con:cols=$columns lines=$lines_max");
-		p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
+	$h = get_current_hour();
+	system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
 
-		@users_to_ignore	= get_users_to_ignore();
-		@networks		= get_all_networks();
-		@networks		= shuffle(@networks);
+	if(!$arg){
+		if($run_in_background){
 
-		p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
+			# Si va a correr en background, hacemos una cuenta atrás informando de que se ejecutará en segundo plano
+			p("Para detener $tool_name ejecute taskmgr.exe y elimine el proceso Perl.exe\n\n");
 
-		$h = get_current_hour();
-		my $last_title = "", $title = "Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
+			sleep 10;
 
-		my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
+			p("$tool_name entrará en segundo plano en:\n");
 
-		MAIN_LOOP:
-		foreach(@networks){
-			read_configuration();
-			$h = get_current_hour();
-			system("title $tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
+			sleep 1;
 
-			if($last_title ne $title){
-				$last_title = $title;
-				system("title $title");
+			for(my $i = 10; $i > 0; $i--){
+				p("$i segundos\n");
+				sleep 1;
 			}
 
-			my $pid = $pm->start and next MAIN_LOOP;
-
-			p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
-			scan($_);
-
-			$pm->finish;
-
+			# Escondemos la ventana del terminal		
+			my $hw = Win32::GUI::GetPerlWindow();		
+			Win32::GUI::Hide($hw);
 		}
-		$pm->wait_all_children;
 
-		p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
+		# Entramos en modo sleep
+		exec( $^X, $0, "-s -1");
 
-		sleep 10;
+	} else {
+		my $hw = Win32::GUI::GetPerlWindow();
+	
+		if($run_in_background && (Win32::GUI::IsVisible($hw))) {
+			Win32::GUI::Hide($hw);
+		} elsif(!$run_in_background && ! (Win32::GUI::IsVisible($hw))) {
+			Win32::GUI::Show($hw);
+		}
+	
+		if($arg eq "-a") { # modo analyze
+			system("mode con:cols=$columns lines=$lines_max");
+			p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 
-		exec( $^X, $0, "-s $last_active_hour");
+			@users_to_ignore	= get_users_to_ignore();
+			@networks		= get_all_networks();
+			@networks		= shuffle(@networks);
 
-	} else { # sleep
-		system("mode con:cols=$columns lines=$lines_min");
-		p("main:\t\t\t\tDesactivado.\n") if($debug_main);
-		until((grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
+			p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
+
+			my $last_title = "", $title = "Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
+
+			my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
+
+			MAIN_LOOP:
+			foreach(@networks){
+				read_configuration();
+				$h = get_current_hour();
+				system("title $tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
+
+				if($last_title ne $title){
+					$last_title = $title;
+					system("title $title");
+				}
+
+				my $pid = $pm->start and next MAIN_LOOP;
+
+				p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
+				scan($_);
+
+				$pm->finish;
+
+			}
+			$pm->wait_all_children;
+
+			p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
+
 			sleep 10;
-			read_configuration();
-			$h = get_current_hour();
-			system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
-		}
 
-		exec( $^X, $0, "-a $h");
+			exec( $^X, $0, "-s $last_active_hour");
+
+		} elsif($arg eq "-s") { # modo sleep
+
+			system("mode con:cols=$columns lines=$lines_min");
+			p("main:\t\t\t\tDesactivado.\n") if($debug_main);
+
+			until((grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
+				sleep 10;
+				read_configuration();
+				$h = get_current_hour();
+				system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
+			}
+
+			exec( $^X, $0, "-a $h");
+		}
 	}
+
 }
 
 main();
