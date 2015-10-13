@@ -17,9 +17,11 @@
 #
 
 use utf8;
+
 use Switch;
 use Encode qw(decode encode);
 use POSIX 'strftime';
+use Parallel::ForkManager;
 
 use DBI;
 use DBI qw(:sql_types);
@@ -27,15 +29,13 @@ use DBI qw(:sql_types);
 use List::Util 'shuffle';
 use List::MoreUtils qw(uniq);
 
-use Win32::GUI();
-
 #########################################################
 # Para tocar
 my $rutadb				= "database.db";
 
 # For the console
 my $columns				= 140;
-my $lines_max				= 55;
+my $lines_max				= 25;
 my $lines_min				= 4;
 my $console_encoding			= "cp850";
 
@@ -43,10 +43,9 @@ my $console_encoding			= "cp850";
 my $window_encoding			= "iso-8859-15";
 
 # Timing options of the scan function.
-# Each scan call check one record in networks table.
-my $seconds_to_wait_for_each_scan_call	= 10;
+# Each scan call check one IP address.
 my $max_scan_children_processes		= 10;
-my $max_simultaneous_scans		= 3;
+my $max_simultaneous_scans		= 2;
 
 
 #########################################################
@@ -54,8 +53,7 @@ my $max_simultaneous_scans		= 3;
 my $tool_name				= "Bad Curious Cat";
 my @users_to_ignore;
 my @active_hours			= (10, 13, 17);
-my $last_active_hour			= -1;
-my $h, $last_h;
+my $h					= -1;
 
 my $debug_get_serial_number		= 0;
 my $debug_get_computer_name		= 0;
@@ -72,62 +70,11 @@ my $debug_main				= 0;
 
 my $actived;
 
-$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
+#$SIG{CHLD} = 'IGNORE'; 			# To avoid zombie processes.
 
-#########################################################
-# Win32 main Window
-my $width = 800;
-my $height = 250;
-
-# Icono
-#my $icon = Win32::GUI::Icon->new("cci.ico");
-
-# Creamos la ventana
-my $main = Win32::GUI::Window->new(
-	-name		=>	'Main',
-	-width		=>	$width,
-	-height		=>	$height,
-	-title		=>	'Curious Cat Indexer',
-	-minsize	=>	[$width, $height],
-	-maxsize	=>	[$width, $height],
-);
-#$main->SetIcon($icon);
-
-# Imagen
-# my $cci = Win32::GUI::Bitmap->new("cci.bmp");
-
-sub Main_Terminate {
-	-1;
-}
-
-
-# Escondemos la ventana del terminal
-my $hw = Win32::GUI::GetPerlWindow();
-Win32::GUI::Hide($hw);
-
-# Centramos la ventana
-my $desk = Win32::GUI::GetDesktopWindow();
-my $wi = Win32::GUI::Width($desk);
-my $he = Win32::GUI::Height($desk);
-my $x = ($wi - $width) / 2;
-my $y = ($he - $height) / 2;
-$main->Move($x, $y);
-
-
-# Textfield dpnde iremos volcando la información.
-my $textf = $main->AddTextfield(
-	-name		=>	"TextField",
-	-left		=>	0,
-	-top		=>	1,
-	-width		=>	$width - 10,
-	-height		=>	$height - 26,
-	-background	=>	[50,	50,	50],
-	-foreground	=>	[0,	250,	200],
-	-multiline	=>	1,
-	-readonly	=>	1,
-	-vscroll	=>	1,
-);
-
+my $last_active_hour;
+my ($arg, $last_active_hour) = @ARGV;
+$last_active_hour = -1 if(!$last_active_hour);
 
 #########################################################
 
@@ -200,13 +147,6 @@ sub p {
 	# A la terminal
 	$text			= encode($console_encoding, $original_text);
 	print " [$t] [$pid] $text";
-
-	# A la ventana de Windows.
-	chomp($original_text);
-	$original_text		= encode($window_encoding, $original_text);
-	$textf->Append("\r\n") if($textf->Text() ne "");
-	$textf->Append("[$t] [$pid] $original_text");
-	Win32::GUI::DoEvents();
 }
 
 sub get_serial_number {
@@ -497,112 +437,98 @@ sub scan {
 
 	p("scan:\t\t\t\tEscaneando " . ($#resultados + 1) . " IPs en $network.\n") if($debug_scan);
 
-	my $hijos			= 0;
+	my $pm = Parallel::ForkManager->new($max_scan_children_processes);
+
+	SCAN_LOOP:
 	foreach $objetivo (@resultados){
 
-		# Si los procesos hijo han superado el límite esperamos.
-		if ($hijos >= $max_scan_children_processes) {
-			$pid=wait();
-			$hijos--;
-		}
+		# Creamos un nuevo proceso hijo
+		my $pid = $pm->start and next SCAN_LOOP;
 
-		# Hacemos un nuevo proceso hijo
-		$pid = fork();
+		# SERIAL NUMBER
+		my $numeroserie = get_serial_number($objetivo);
 
-		# Si el $pid es 0, es que se trata del proceso hijo
-		if(!$pid){
-			# SERIAL NUMBER
-			my $numeroserie = get_serial_number($objetivo);
+		if($numeroserie) {
+			my $equipo = "", $modelo = "", $sistemaoperativo = "";
 
-			if($numeroserie) {
-				my $equipo = "", $modelo = "", $sistemaoperativo = "";
+			# Hacemos dos intentos			
+			for (my $i = 0; $i < 2; $i++){
+				# NOMBRE DE EQUIPO
+				$equipo			= get_computer_name($objetivo) if (!$equipo);
 
-				# Hacemos dos intentos			
-				for (my $i = 0; $i < 2; $i++){
-					# NOMBRE DE EQUIPO
-					$equipo			= get_computer_name($objetivo) if (!$equipo);
+				# MODELO
+				$modelo			= get_model($objetivo) if (!$modelo);
 
-					# MODELO
-					$modelo			= get_model($objetivo) if (!$modelo);
-
-					# OS
-					$sistemaoperativo	= get_operating_system($objetivo) if (!$sistemaoperativo);
-				}
-
-				if ($equipo){
-					$time = get_current_datetime();
-
-					my $all = sql_selectall_arrayref("SELECT * FROM computers WHERE serial=\'$numeroserie\' " .
-									"AND name=\'$equipo\'");
-				
-					my $t = 0;
-					my $db_serial, $db_name, $db_model, $db_os, $db_last_ip, $db_first_seen, $db_last_seen;
-					foreach my $row (@$all) {
-						$t = 1;
-						($db_serial, $db_name, $db_model, $db_os, $db_last_ip, $db_first_seen, $db_last_seen) = @$row;
-					}
-
-					if(!$t){
-						# No existe en la DB, hay que añadirlo.
-						sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
-							"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
-
-						p("scan:\t\t\t\tAñadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);					
-
-					} else {
-						# Sí que existe en la DB, hay que actualizarlo.
-						my $query = "";
-
-						$query .= "UPDATE computers SET ";
-						$query .= "model=\'$modelo\', " if ($modelo && !$db_model);
-						$query .= "os=\'$sistemaoperativo\', " if ($sistemaoperativo && !$db_os);
-						$query .= "last_ip=\'$objetivo\', ";
-						$query .= "last_seen=\'$time\' ";
-						$query .= "WHERE serial=\'$numeroserie\' AND name=\'$equipo\'";
-
-						sql_do($query);
-						p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);
-
-					}
-
-					# USUARIOS
-					my @users = get_computer_users($objetivo);
-					foreach (@users){
-						if($_) {
-							my %user = get_db_user($_);
-
-							if(%user){
-								foreach $key (sort(keys %user)) {
-									associate_user_to_computer($numeroserie, $equipo, $key, $user{$key});
-								}
-							} else {
-								my $complete_name = get_ad_complete_name($_);
-								add_db_user($_, $complete_name);
-								associate_user_to_computer($numeroserie, $equipo, $_, $complete_name);
-							}
-						}
-					}
-				} else {
-					p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($debug_scan);
-				}
-			} else {
-				# p("scan:\t\t\t\tEquipo $objetivo no añadido. No se pudo sacar el número de serie.\n") if($debug_scan);
+				# OS
+				$sistemaoperativo	= get_operating_system($objetivo) if (!$sistemaoperativo);
 			}
 
-			exit(0);
+			if ($equipo){
+				$time = get_current_datetime();
 
-		} elsif($pid) {
-			# Proceso padre
-			$hijos++;
-			sleep 1;
+				my $all = sql_selectall_arrayref("SELECT * FROM computers WHERE serial=\'$numeroserie\' " .
+								"AND name=\'$equipo\'");
+				
+				my $t = 0;
+				my $db_serial, $db_name, $db_model, $db_os, $db_last_ip, $db_first_seen, $db_last_seen;
+				foreach my $row (@$all) {
+					$t = 1;
+					($db_serial, $db_name, $db_model, $db_os, $db_last_ip, $db_first_seen, $db_last_seen) = @$row;
+				}
+
+				if(!$t){
+					# No existe en la DB, hay que añadirlo.
+					sql_do(	"INSERT INTO computers VALUES (\'$numeroserie\', \'$equipo\', " .
+						"\'$modelo\', \'$sistemaoperativo\', \'$objetivo\', \'$time\', \'$time\')");
+
+					p("scan:\t\t\t\tAñadimos:\t\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);					
+
+				} else {
+					# Sí que existe en la DB, hay que actualizarlo.
+					my $query = "";
+
+					$query .= "UPDATE computers SET ";
+					$query .= "model=\'$modelo\', " if ($modelo && !$db_model);
+					$query .= "os=\'$sistemaoperativo\', " if ($sistemaoperativo && !$db_os);
+					$query .= "last_ip=\'$objetivo\', ";
+					$query .= "last_seen=\'$time\' ";
+					$query .= "WHERE serial=\'$numeroserie\' AND name=\'$equipo\'";
+
+					sql_do($query);
+					p("scan:\t\t\t\tActualizamos:\t\t$numeroserie\t$equipo\t$objetivo\n") if($debug_scan);
+				}
+
+				# USUARIOS
+				my @users = get_computer_users($objetivo);
+				foreach (@users){
+					if($_) {
+						my %user = get_db_user($_);
+
+						if(%user){
+							foreach $key (sort(keys %user)) {
+								associate_user_to_computer($numeroserie, $equipo, $key, $user{$key});
+							}
+						} else {
+							my $complete_name = get_ad_complete_name($_);
+							add_db_user($_, $complete_name);
+							associate_user_to_computer($numeroserie, $equipo, $_, $complete_name);
+						}
+					}
+				}
+			} else {
+				p("scan:\t\t\t\tProblemas con equipo $objetivo con S/N: $numeroserie. Falta equipo ($equipo) y/o sistema operativo($sistemaoperativo)\n") if($debug_scan);
+			}
 		} else {
-			p("Cagada, no se pudo llamar a fork()\n");
+			# p("scan:\t\t\t\tEquipo $objetivo no añadido. No se pudo sacar el número de serie.\n") if($debug_scan);
 		}
+
+		$pm->finish;
+
 		
 	}
+	$pm->wait_all_children;
 
 	p("scan:\t\t\t\tScan para la red $network finalizado.\n") if($debug_scan);
-	exit(0);
 }
 
 sub read_configuration {
@@ -672,100 +598,57 @@ sub create_db {
 	}
 }
 
-sub enable_netcheck {
-	system("mode con:cols=$columns lines=$lines_max");
-	$textf->Text("");
-	Win32::GUI::DoEvents();
-	p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
-	$actived		= 1;
-	$last_active_hour	= get_current_hour();
-	Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
-}
-
-sub disable_netcheck {
-	system("mode con:cols=$columns lines=$lines_min");
-	p("main:\t\t\t\tDesactivado.\n") if($debug_main);
-	$actived		= 0;
-	Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
-}
-
 sub main {
+	system("mode con:cols=$columns lines=$lines_max");
+
 	# Para crear la base de datos en el caso de que no existiese.
 	create_db();
 
 	read_configuration();
 
-	# Inicia desactivado
-	disable_netcheck();
-	
-	if(my $p = fork()) {
-		$main->Show();
-		Win32::GUI::Dialog();
-		exit(0);
-	} else {
-		$last_h = -1;
-		$h = get_current_hour();
+	if($arg eq "-a") { # analyze
+		p("main:\t\t\t\tActivamos el escanner.\n\n") if($debug_main);
 
-		while("siempre a tope"){
+		@users_to_ignore	= get_users_to_ignore();
+		@networks		= get_all_networks();
+		@networks		= shuffle(@networks);
+
+		p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
+
+		my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
+
+		MAIN_LOOP:
+		foreach(@networks){
 			read_configuration();
 
-			$h = get_current_hour();
+			my $pid = $pm->start and next MAIN_LOOP;
 
-			if($h != $last_h) {
-				p("main:\t\t\t\tactive: $actived\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
-				Win32::GUI::Change($main, ( -title => "$tool_name - Active: $actived Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours", ));
-				$last_h = $h;
-			}
+			p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
+			scan($_);
 
-			if(!$actived){
+			$pm->finish;
 
-
-				if( (grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
-
-					enable_netcheck();
-
-					@users_to_ignore	= get_users_to_ignore();
-					@networks		= get_all_networks();
-					@networks		= shuffle(@networks);
-
-					p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
-					my $hijos = 0;
-
-					foreach(@networks){
-						read_configuration();
-
-						# Si los procesos hijo han superado el límite esperamos.
-						if ($hijos >= $max_simultaneous_scans) {
-							$pid = wait();
-							$hijos--;
-						}
-
-						my $pid = fork();
-
-						if(!$pid) {
-							p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
-							scan($_);
-
-						} elsif($pid) {
-							$hijos++;
-							sleep($seconds_to_wait_for_each_scan_call);
-
-						} else {
-							p("main:\t\t\t\tNo se ha podido hacer fork();");
-							exit(1);
-						}
-
-					}
-
-					p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
-
-					sleep 10;
-
-					disable_netcheck();
-				}
-			}
-			sleep 10;
 		}
+		$pm->wait_all_children;
+
+		p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
+
+		sleep 10;
+
+		exec( $^X, $0, "-s $last_active_hour");
+		exit(0);
+
+	} else { # sleep
+		p("main:\t\t\t\tDesactivado.\n") if($debug_main);
+		until((grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
+			sleep 10;
+			read_configuration();
+			$h = get_current_hour();
+			p("main:\t\t\t\tactive: No\tLast active hour: $last_active_hour\tCurrent hour: $h\tActive hours: @active_hours\n") if($debug_main);
+		}
+
+		exec( $^X, $0, "-a $h");
+		exit(0);
 	}
 }
 
