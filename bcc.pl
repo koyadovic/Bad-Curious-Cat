@@ -34,7 +34,7 @@ use Win32::GUI();
 #########################################################
 # Para tocar
 my $rutadb				= "database.db";
-my $run_in_background			= 0;
+my $run_in_background			= 1;
 
 # For the console
 my $columns				= 140;
@@ -613,11 +613,11 @@ sub main {
 			# Si va a correr en background, hacemos una cuenta atrás informando de que se ejecutará en segundo plano
 			p("Para detener $tool_name ejecute taskmgr.exe y elimine el proceso Perl.exe\n\n");
 
-			sleep 10;
+			sleep 5;
 
 			p("$tool_name entrará en segundo plano en:\n");
 
-			sleep 1;
+			sleep 2;
 
 			for(my $i = 10; $i > 0; $i--){
 				p("$i segundos\n");
@@ -651,7 +651,7 @@ sub main {
 
 			p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
-			my $last_title = "", $title = "Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
+			my $last_title = "", $title = "$tool_name - Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
 
 			my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
 
@@ -659,7 +659,7 @@ sub main {
 			foreach(@networks){
 				read_configuration();
 				$h = get_current_hour();
-				system("title $tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
+				$title = "$tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours";
 
 				if($last_title ne $title){
 					$last_title = $title;
@@ -669,6 +669,7 @@ sub main {
 				my $pid = $pm->start and next MAIN_LOOP;
 
 				p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
+
 				scan($_);
 
 				$pm->finish;
@@ -678,7 +679,7 @@ sub main {
 
 			p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 
-			sleep 10;
+			sleep 5;
 
 			exec( $^X, $0, "-s $last_active_hour");
 
