@@ -1,6 +1,6 @@
 ﻿#!C:\strawberry\perl\bin\perl.exe
 #
-# NetCheck.pl
+# bcc.pl
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@ use Win32::GUI();
 # Para tocar
 my $rutadb				= "database.db";
 my $run_in_background			= 1;
+my $run_in_background_message		= 0;
 
 # For the console
 my $columns				= 140;
@@ -137,14 +138,16 @@ sub get_current_datetime {
 
 # Ya que usamos UTF-8, codifica los prints para que en la consola de Windows se vea todo correctamente
 sub p {
-	my ($original_text)	= @_;
-	my $t			= get_timestamp();
-	my $pid			= $$;
-	$pid			= sprintf '%6s', $pid;
+	if(! $run_in_background) {
+		my ($original_text)	= @_;
+		my $t			= get_timestamp();
+		my $pid			= $$;
+		$pid			= sprintf '%6s', $pid;
 
-	# A la terminal
-	$text			= encode($console_encoding, $original_text);
-	print " [$t] [$pid] $text";
+		# A la terminal
+		$text			= encode($console_encoding, $original_text);
+		print " [$t] [$pid] $text";
+	}
 }
 
 sub get_serial_number {
@@ -609,19 +612,21 @@ sub main {
 
 	if(!$arg){
 		if($run_in_background){
+			if($run_in_background_message) {
 
-			# Si va a correr en background, hacemos una cuenta atrás informando de que se ejecutará en segundo plano
-			p("Para detener $tool_name ejecute taskmgr.exe y elimine el proceso Perl.exe\n\n");
+				# Si va a correr en background, hacemos una cuenta atrás informando de que se ejecutará en segundo plano
+				print "Para detener $tool_name ejecute taskmgr.exe y elimine el proceso Perl.exe\n\n";
 
-			sleep 5;
+				sleep 5;
 
-			p("$tool_name entrará en segundo plano en:\n");
+				print "Entrando en segundo plano en:\n";
 
-			sleep 2;
-
-			for(my $i = 10; $i > 0; $i--){
-				p("$i segundos\n");
 				sleep 1;
+
+				for(my $i = 10; $i > 0; $i--){
+					print "$i segundos\n";
+					sleep 1;
+				}
 			}
 
 			# Escondemos la ventana del terminal		
@@ -637,6 +642,7 @@ sub main {
 	
 		if($run_in_background && (Win32::GUI::IsVisible($hw))) {
 			Win32::GUI::Hide($hw);
+
 		} elsif(!$run_in_background && ! (Win32::GUI::IsVisible($hw))) {
 			Win32::GUI::Show($hw);
 		}
@@ -651,13 +657,14 @@ sub main {
 
 			p("main:\t\t\t\tEscanearemos las siguientes redes: @networks\n\n") if($debug_main);
 
-			my $last_title = "", $title = "$tool_name - Active: No Last active hour: $last_active_hour Current hour: $h Active hours: @active_hours";
+			my $last_title = "", $title = "";
 
 			my $pm = Parallel::ForkManager->new($max_simultaneous_scans);
 
 			MAIN_LOOP:
 			foreach(@networks){
 				read_configuration();
+
 				$h = get_current_hour();
 				$title = "$tool_name - Active: Yes - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours";
 
@@ -671,16 +678,15 @@ sub main {
 				p("main:\t\t\t\tLlamamos a la función scan, argumento: $_\n") if($debug_main);
 
 				scan($_);
-
 				$pm->finish;
 
 			}
+
 			$pm->wait_all_children;
 
 			p("main:\t\t\t\tNo hay más redes para escanear\n") if($debug_main);
 
 			sleep 5;
-
 			exec( $^X, $0, "-s $last_active_hour");
 
 		} elsif($arg eq "-s") { # modo sleep
@@ -690,7 +696,9 @@ sub main {
 
 			until((grep ( /^$h$/, @active_hours )) && ($h != $last_active_hour )) {
 				sleep 10;
+
 				read_configuration();
+
 				$h = get_current_hour();
 				system("title $tool_name - Active: No - Last active hour: $last_active_hour - Current hour: $h - Active hours: @active_hours");
 			}
