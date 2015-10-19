@@ -593,8 +593,12 @@ sub create_db {
 		$db->do($default_config_sql);
 		
 		$db->disconnect;
+
+		my $t = encode($console_encoding, "create_db:\t\t\tPor favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
 		
-		p("create_db:\t\t\tPor favor, edite $rutadb para añadir redes en las que escanear, su configuración, etcétera.\n");
+		print "$t";
+		system("pause");
+		
 		exit(0);
 	}
 }
